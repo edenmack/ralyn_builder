@@ -40,8 +40,8 @@ namespace ralyn_builder
         }
         public static List<string> keywords = new List<string>() { "in", "var", "let", "for", "foreach", "while", "when", "break", "continue", "use", "using", "import", "data", "link", "type", "class", "struct" };
 
-        static List<char> separatorList = new List<char>() { ',', ':', ';', '{', '}', '[', ']', '(', ')', '.', '"', '\'', '`' };
-        static List<char> operatorList = new List<char>() { '!', '%', '^', '&', '*', '-', '+', '+', '|', '?', '/', '<', '>', '~', '@', '#', '$', '\\', '|', '=' };
+        static List<char> separatorList = new List<char>() { ',', ':', ';', '$', '{', '}', '[', ']', '(', ')', '.', '"', '\'', '`' };
+        static List<char> operatorList = new List<char>() { '!', '%', '^', '&', '*', '-', '+', '+', '|', '?', '/', '<', '>', '~', '@', '#', '\\', '|', '=' };
         static List<char> posIntList = new List<char>() { '1', '2', '3', '4', '5', '6', '7', '8', '9', '0' };
         static List<char> numStartList = listConcat(posIntList, new List<char>() { '-' });
         static List<char> numValidList = listConcat(numStartList, new List<char>() { 'e', 'E', '.' }); 
@@ -122,7 +122,10 @@ namespace ralyn_builder
 
         public override string ToString()
         {
-            return String.Format("[{0}: {1}]", this.Type, this.Value);
+            if (this.Type == TokenType.NewLine)
+                return String.Format("[{0}: [NEWLINE]]", this.Type);
+            else
+                return String.Format("[{0}: {1}]", this.Type, this.Value);
         }
     }
     class Program
@@ -134,19 +137,19 @@ namespace ralyn_builder
 @"   //this
 //comment2
 
-abcτqrs
-
 //block comment{
     this is a comment 
     block
+    {this is an inner block}
 }
-TODO: this is something to do;
+//TODO: this is something to do;
             
-    var $b:bool = true;
-    var $n:float = 6.022e23;
-    var $s:string = q('this is a string');
-    var $s2:string = 'this is also a string';
-    var $s3:string = ""this is the final string"";
+    var b:bool = true;
+    var n:float = 6.022e23;
+    var s:string = $(_this is a string_);
+    var s1:string = $'this is a string as well';
+    var s2:string = 'this is also a string';
+    var s3:string = ""this is the final string"";
 }
 ";
 
@@ -194,13 +197,131 @@ TODO: this is something to do;
             var rawTokens = syntaxSort(code);
 
             ///Review raw tokens
-            /// Tokens -> String Literals
             /// Tokens -> Comment Literals
             /// Tokens -> hints (ex TODO, DOC, etc.)
+            /// Tokens -> String Literals
             /// Word -> Literal|Keyword
             /// remove unnecessary white space
+            /// 
 
-            return rawTokens;
+            var tokens = new List<Token>();
+            var accumulator = new System.Text.StringBuilder();
+            var nestLevel = 0;
+            var isBlock = false;
+
+            //first pass: COMMENTS
+            isBlock = false;
+            nestLevel = 0;
+            foreach (var t in rawTokens)
+            {
+                if(t.Value == "//"
+                    || isBlock)
+                {
+                    isBlock = true;
+
+                    if(t.Type == Token.TokenType.NewLine && nestLevel == 0)
+                    {
+                        //flush single line comment
+                        tokens.Add(new Token(Token.TokenType.Comment, accumulator.ToString()));
+                        accumulator.Clear();
+                        isBlock = false;
+                    }
+                    else
+                    {
+                        accumulator.Append(t.Value);
+
+                        if (t.Value == "{")
+                            ++nestLevel;
+                        if(t.Value == "}")
+                        {
+                            --nestLevel;
+                            if(nestLevel == 0)
+                            {
+                                //flush multiline comment
+                                tokens.Add(new Token(Token.TokenType.Comment, accumulator.ToString()));
+                                accumulator.Clear();
+                                isBlock = false;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    //this is not a comment... just flush the token as is
+                    tokens.Add(t);
+                }
+            }
+
+            //second pass: QUOTES
+            //TODO:  this doesn't work yet... need to look at finding beginning and ends of strings
+            rawTokens.Clear();
+            rawTokens.AddRange(tokens);
+            tokens.Clear();
+            isBlock = false;
+            nestLevel = 0;
+            accumulator.Clear();
+            var endDelimiter = "";
+            foreach(var t in rawTokens)
+            {
+                ///a string begins with $", $', or $(x (where x can be any character) and ends with a matching ", ', or x)
+                /// the $ can be ommitted if you are not using parenthetical notation.
+
+                if(t.Value[0] == '$'
+                    || t.Value[0] == '"'
+                    || t.Value[0] == '\''
+                    || isBlock)
+                {
+                    if(endDelimiter == "")
+                    {
+                        //find end delimiter
+                        if(isBlock)
+                        {
+                            //already found $( so next character makes up delimiter
+                            endDelimiter = t.Value[0].ToString() + ")";
+                        }else if (t.Value[0] == '"')
+                        {
+                            endDelimiter = "\"";
+                        }else if (t.Value[0] == '\'')
+                        {
+                            endDelimiter = "'";
+                        }else if (t.Value[0] == '$')
+                        {
+                            if (t.Value.Length == 3)
+                                endDelimiter = t.Value[2].ToString() + ")";
+                            if (t.Value.Length == 2)
+                            {
+                                if (t.Value[1] != '(')
+                                    endDelimiter = t.Value[1].ToString();
+                                else
+                                    endDelimiter = "";//we don't know yet
+
+                            }
+                        }
+                    }
+
+
+                    isBlock = true;
+
+                    if (t.Value.IndexOf(endDelimiter) == -1)
+                    {
+                        accumulator.Append(t.Value);
+                    }else
+                    {
+                        accumulator.Append(t.Value.Substring(0, t.Value.IndexOf(endDelimiter)));
+                        tokens.Add(new Token(Token.TokenType.Literal, accumulator.ToString()));
+                        tokens.Add(new Token(Token.TokenType.Word, t.Value.Substring(t.Value.IndexOf(endDelimiter))));
+                        isBlock = false;
+                    }
+
+                }
+                else
+                {
+                    //not a string
+                    tokens.Add(t);
+                }
+            }
+
+            return tokens;
         }
         static List<Token> syntaxSort(string code)
         {
@@ -209,7 +330,6 @@ TODO: this is something to do;
             string line;
             using (var _code = new System.IO.StringReader(code))
             {
-                //first pass
                 var lineNum = 0;
                 var charNum = 0;
 
@@ -264,7 +384,7 @@ TODO: this is something to do;
                     {
                         tokens.Add(new Token(currentStatus.Type, tokenAccumulator.ToString()));
                     }
-                    tokens.Add(new Token(Token.TokenType.NewLine, ""));
+                    tokens.Add(new Token(Token.TokenType.NewLine, System.Environment.NewLine));
 
                     //reset for next line
                     tokenAccumulator.Clear();
