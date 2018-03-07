@@ -133,7 +133,7 @@ namespace ralyn_builder
         //UI
         static void Main(string[] args)
         {
-            var testString =
+            var testComment =
 @"   //this
 //comment2
 
@@ -143,9 +143,11 @@ namespace ralyn_builder
     {this is an inner block}
 }
 //TODO: this is something to do;
-            
-    var b:bool = true;
-    var n:float = 6.022e23;
+";
+            var testNumbers =
+@"6.022e23 -23 1.3 1ab4";
+            var testString =
+@"
     var s:string = $(_this is a string_);
     var s1:string = $'this is a string as well';
     var s2:string = 'this is also a string';
@@ -271,48 +273,41 @@ namespace ralyn_builder
                     || t.Value[0] == '\''
                     || isBlock)
                 {
-                    if(endDelimiter == "")
+                    //this is a string
+                    if (!isBlock)
                     {
-                        //find end delimiter
-                        if(isBlock)
-                        {
-                            //already found $( so next character makes up delimiter
-                            endDelimiter = t.Value[0].ToString() + ")";
-                        }else if (t.Value[0] == '"')
-                        {
-                            endDelimiter = "\"";
-                        }else if (t.Value[0] == '\'')
-                        {
-                            endDelimiter = "'";
-                        }else if (t.Value[0] == '$')
-                        {
-                            if (t.Value.Length == 3)
-                                endDelimiter = t.Value[2].ToString() + ")";
-                            if (t.Value.Length == 2)
-                            {
-                                if (t.Value[1] != '(')
-                                    endDelimiter = t.Value[1].ToString();
-                                else
-                                    endDelimiter = "";//we don't know yet
-
-                            }
-                        }
-                    }
-
-
-                    isBlock = true;
-
-                    if (t.Value.IndexOf(endDelimiter) == -1)
-                    {
+                        //just discovered the string
+                        isBlock = true;
                         accumulator.Append(t.Value);
                     }else
                     {
-                        accumulator.Append(t.Value.Substring(0, t.Value.IndexOf(endDelimiter)));
-                        tokens.Add(new Token(Token.TokenType.Literal, accumulator.ToString()));
-                        tokens.Add(new Token(Token.TokenType.Word, t.Value.Substring(t.Value.IndexOf(endDelimiter))));
-                        isBlock = false;
+                        //inside string until we discover exit condition 
+                        //TODO: FIX EXIT CONDITIONS!  STILL NOT RIGHT
+                        if (accumulator.Length >= 3)
+                        {
+                            endDelimiter = accumulator.ToString().Substring(0, 3);
+                            endDelimiter.TrimStart(new char[] { '$' });
+                            if (endDelimiter[0] == '(')
+                                endDelimiter = endDelimiter[1] + ")";
+                            else
+                                endDelimiter = endDelimiter[0].ToString();
+                        }
+                        
+                        if (!String.IsNullOrEmpty(endDelimiter) && t.Value.IndexOf(endDelimiter) != -1)
+                        {
+                            accumulator.Append(t.Value.Substring(t.Value.IndexOf(endDelimiter)));
+                            tokens.Add(new Token(Token.TokenType.Literal, accumulator.ToString()));
+                            accumulator.Clear();
+                            accumulator.Append(t.Value.Substring(t.Value.IndexOf(endDelimiter)));
+                            isBlock = false;
+                            endDelimiter = "";
+                        }
+                        else
+                        {
+                            accumulator.Append(t.Value);
+                        }
+                        
                     }
-
                 }
                 else
                 {
