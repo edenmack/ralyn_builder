@@ -42,8 +42,9 @@ namespace ralyn_builder
         }
         public static List<string> keywords = new List<string>() { "in", "var", "let", "for", "foreach", "while", "when", "break", "continue", "use", "using", "import", "data", "link", "type", "class", "struct" };
 
-        static List<char> separatorList = new List<char>() { ',', ':', ';', '$', '{', '}', '[', ']', '(', ')', '.', '"', '\'', '`' };
-        static List<char> operatorList = new List<char>() { '!', '%', '^', '&', '*', '-', '+', '+', '|', '?', '/', '<', '>', '~', '@', '#', '\\', '|', '=' };
+        static List<char> separatorList = new List<char>() { ',', ':', ';', '{', '}', '[', ']', '(', ')', '.', '`' };
+        static List<char> stringStartList = new List<char>() { '$', '\'', '"', '(' };
+        static List<char> operatorList = new List<char>() { '!', '%', '^', '&', '*', '-', '+', '|', '?', '/', '<', '>', '~', '@', '#', '\\', '|', '=' };
         static List<char> posIntList = new List<char>() { '1', '2', '3', '4', '5', '6', '7', '8', '9', '0' };
         static List<char> numStartList = listConcat(posIntList, new List<char>() { '-' });
         static List<char> numValidList = listConcat(numStartList, new List<char>() { 'e', 'E', '.' }); 
@@ -78,6 +79,11 @@ namespace ralyn_builder
             {
                 currentTokenType = TokenType.Separator;
                 currentList = Token.separatorList;
+            }
+            else if (charListContains(Token.stringStartList, c))
+            {
+                currentTokenType = TokenType.Literal_String;
+                currentList = Token.stringStartList;
             }
             else if (charListContains(Token.operatorList, c))
             {
@@ -199,8 +205,6 @@ namespace ralyn_builder
             {
                 var lineNum = 0;
                 var charNum = 0;
-                var tokenLineStart = 0;
-                var tokenCharStart = 0;
                 Token.TokenWatcher currentStatus = new Token.TokenWatcher();
                 currentStatus.Type = Token.TokenType.None;
                 currentStatus.CharacterList = new List<char>() { };
@@ -211,23 +215,23 @@ namespace ralyn_builder
                 while (_code.Peek() > -1)
                 {
                     line = _code.ReadLine().Trim();
+                    if(lineNum > 0 && currentStatus.Type == Token.TokenType.None)
+                    {
+                        tokens.Add(new Token(Token.TokenType.NewLine, Environment.NewLine, lineNum + 1, 0));
+                    }
                     ++lineNum;
-                    if (currentStatus.Type == Token.TokenType.None)
-                        tokenLineStart = lineNum;
                     charNum = 0;
                     
 
                     foreach (char c in line)
                     {
                         ++charNum;
-                        if (currentStatus.Type == Token.TokenType.None)
-                            tokenCharStart = charNum;
-
-                        if ((tokenAccumulator.Length >= 1 && (tokenAccumulator[0] == '\'' || tokenAccumulator[0] == '"'))
-                            || (tokenAccumulator.Length > 1 && tokenAccumulator[0] == '$' && tokenAccumulator[1] == '('))
+                        
+                        #region string lexing
+                        //if (tokenAccumulator.Length >= 1 && (tokenAccumulator[0] == '\'' || tokenAccumulator[0] == '"' || tokenAccumulator[0] == '$'))
+                        if(currentStatus.Type == Token.TokenType.Literal_String)
                         {
                             //this is a string
-                            currentStatus.Type = Token.TokenType.Literal_String;
 
                             tokenAccumulator.Append(c);
 
@@ -238,19 +242,24 @@ namespace ralyn_builder
                                 stringEndSequence = tokenAccumulator[2] + ")";
                             }
 
-                            if(tokenAccumulator.Length>=stringEndSequence.Length*2 
+                            if(stringEndSequence.Length > 0
+                                && tokenAccumulator.Length>=stringEndSequence.Length*2 
                                 && tokenAccumulator.ToString().Substring(tokenAccumulator.Length - stringEndSequence.Length) == stringEndSequence)
                             {
                                 //found end of string -- flush
-                                tokens.Add(new Token(currentStatus.Type, tokenAccumulator.ToString(),tokenLineStart,tokenCharStart));
+                                tokens.Add(new Token(currentStatus.Type, tokenAccumulator.ToString(),lineNum,charNum));
                                 tokenAccumulator.Clear();
                                 currentStatus.Type = Token.TokenType.None;
+                                stringEndSequence = "";
                                 continue;
                             }
-                            if (charNum == line.Length) tokenAccumulator.Append(Environment.NewLine);
+                            //if (charNum == line.Length) tokenAccumulator.Append(Environment.NewLine);
 
-                            continue;                            
-                        }else if (tokenAccumulator.Length > 1 && tokenAccumulator[0] == '/' && tokenAccumulator[1] == '/')
+                            continue;
+                        }
+                        #endregion string lexing
+                        #region comment lexing
+                        else if (tokenAccumulator.Length > 1 && tokenAccumulator[0] == '/' && tokenAccumulator[1] == '/')
                         {
                             //this is a comment
                             currentStatus.Type = Token.TokenType.Comment;
@@ -267,7 +276,7 @@ namespace ralyn_builder
                                     //flush block comment
                                     if (tokenAccumulator.Length > 0)
                                     {
-                                        tokens.Add(new Token(currentStatus.Type, tokenAccumulator.ToString(),tokenLineStart,tokenCharStart));
+                                        tokens.Add(new Token(currentStatus.Type, tokenAccumulator.ToString(),lineNum,charNum));
                                         tokenAccumulator.Clear();
                                         currentStatus.Type = Token.TokenType.None;
                                     }
@@ -282,19 +291,24 @@ namespace ralyn_builder
                                     //flush single line comment
                                     if (tokenAccumulator.Length > 0)
                                     {
-                                        tokens.Add(new Token(currentStatus.Type, tokenAccumulator.ToString(), tokenLineStart, tokenCharStart));
+                                        tokens.Add(new Token(currentStatus.Type, tokenAccumulator.ToString(), lineNum, charNum));
                                         tokenAccumulator.Clear();
                                         currentStatus.Type = Token.TokenType.None;
                                     }
-                                    continue;
+                                    //tokens.Add(new Token(Token.TokenType.NewLine, Environment.NewLine, lineNum, line.Length));
+                                    break;
                                 }
                                 else
                                 {
                                     tokenAccumulator.Append(Environment.NewLine);
+                                    break;
                                 }
                                 
                             }
-                        }else if (currentStatus.Type == Token.TokenType.None)
+                        }
+                        #endregion comment lexing
+                        #region general lexing
+                        else if (currentStatus.Type == Token.TokenType.None)
                         {
                             //set token type
                             currentStatus = Token.getTokenCharType(c);
@@ -314,7 +328,7 @@ namespace ralyn_builder
                             else
                             {
                                 //flush
-                                tokens.Add(new Token(currentStatus.Type, tokenAccumulator.ToString(), tokenLineStart, tokenCharStart));
+                                tokens.Add(new Token(currentStatus.Type, tokenAccumulator.ToString(), lineNum, charNum));
                                 tokenAccumulator.Clear();
 
                                 //get new token type
@@ -325,8 +339,18 @@ namespace ralyn_builder
                                 //append first character
                                 tokenAccumulator.Append(c);
                             }
+
+                            //if end of line flush
+                            if (charNum == line.Length)
+                            {
+                                tokens.Add(new Token(currentStatus.Type, tokenAccumulator.ToString(), lineNum, charNum));
+                                tokenAccumulator.Clear();
+                                currentStatus.Type = Token.TokenType.None;
+                                break;
+                            }
                         }
-                    }                    
+                        #endregion general lexing
+                    }
                 }
             }
 
