@@ -22,6 +22,9 @@ namespace ralyn_builder
             Literal_String,
             Literal_Num,
             TODO,
+            DOC,
+            NOTE,
+            DEBUG,
             WhiteSpace,
             NewLine
         }
@@ -203,6 +206,7 @@ namespace ralyn_builder
             string line;
             using (var _code = new System.IO.StringReader(code))
             {
+                #region vars
                 var lineNum = 0;
                 var charNum = 0;
                 Token.TokenWatcher currentStatus = new Token.TokenWatcher();
@@ -210,7 +214,9 @@ namespace ralyn_builder
                 currentStatus.CharacterList = new List<char>() { };
                 var tokenAccumulator = new StringBuilder();
                 var nestLevel = 0;
+                var stringBeginSequence = "";
                 var stringEndSequence = "";
+                #endregion vars
 
                 while (_code.Peek() > -1)
                 {
@@ -226,19 +232,49 @@ namespace ralyn_builder
                     foreach (char c in line)
                     {
                         ++charNum;
-                        
+
+                        #region meta code lexing
+                        //TODO, DOC, NOTE, DEBUG
+                        if (currentStatus.Type == Token.TokenType.TODO
+                            || currentStatus.Type == Token.TokenType.DOC
+                            || currentStatus.Type == Token.TokenType.NOTE
+                            || currentStatus.Type == Token.TokenType.DEBUG
+                            || tokenAccumulator.ToString().IndexOf("DOC") == 0
+                            || tokenAccumulator.ToString().IndexOf("NOTE") == 0
+                            || tokenAccumulator.ToString().IndexOf("DEBUG") == 0
+                            || tokenAccumulator.ToString().IndexOf("TODO") == 0)
+                        {
+                            if (tokenAccumulator.ToString().IndexOf("DOC") == 0) currentStatus.Type = Token.TokenType.DOC;
+                            if (tokenAccumulator.ToString().IndexOf("NOTE") == 0) currentStatus.Type = Token.TokenType.NOTE;
+                            if (tokenAccumulator.ToString().IndexOf("DEBUG") == 0) currentStatus.Type = Token.TokenType.DEBUG;
+                            if (tokenAccumulator.ToString().IndexOf("TODO") == 0) currentStatus.Type = Token.TokenType.TODO;
+
+                            tokenAccumulator.Append(c);
+
+                            if (charNum == line.Length)
+                            {
+                                //flush meta
+                                tokenAccumulator.Remove(0, currentStatus.Type.ToString().Length + 1);
+                                tokens.Add(new Token(currentStatus.Type, tokenAccumulator.ToString(), lineNum, charNum));
+                                tokenAccumulator.Clear();
+                                currentStatus.Type = Token.TokenType.None;
+                            }
+
+                            continue;
+                        }
+                        #endregion meta code lexing
                         #region string lexing
-                        //if (tokenAccumulator.Length >= 1 && (tokenAccumulator[0] == '\'' || tokenAccumulator[0] == '"' || tokenAccumulator[0] == '$'))
-                        if(currentStatus.Type == Token.TokenType.Literal_String)
+                        if (currentStatus.Type == Token.TokenType.Literal_String)
                         {
                             //this is a string
 
                             tokenAccumulator.Append(c);
 
-                            if (tokenAccumulator[0] == '"') stringEndSequence = "\"";
-                            if (tokenAccumulator[0] == '\'') stringEndSequence = "'";
+                            if (tokenAccumulator[0] == '"') stringBeginSequence = stringEndSequence = "\"";
+                            if (tokenAccumulator[0] == '\'') stringBeginSequence = stringEndSequence = "'";
                             if (tokenAccumulator.Length > 2 && tokenAccumulator[0] == '$' && tokenAccumulator[1] == '(')
                             {
+                                stringBeginSequence = "$(" + tokenAccumulator[2];
                                 stringEndSequence = tokenAccumulator[2] + ")";
                             }
 
@@ -247,10 +283,13 @@ namespace ralyn_builder
                                 && tokenAccumulator.ToString().Substring(tokenAccumulator.Length - stringEndSequence.Length) == stringEndSequence)
                             {
                                 //found end of string -- flush
+                                tokenAccumulator.Remove(0, stringBeginSequence.Length);
+                                tokenAccumulator.Replace(stringEndSequence, "");
                                 tokens.Add(new Token(currentStatus.Type, tokenAccumulator.ToString(),lineNum,charNum));
                                 tokenAccumulator.Clear();
                                 currentStatus.Type = Token.TokenType.None;
                                 stringEndSequence = "";
+                                stringBeginSequence = "";
                                 continue;
                             }
                             //if (charNum == line.Length) tokenAccumulator.Append(Environment.NewLine);
@@ -274,8 +313,9 @@ namespace ralyn_builder
                                 if (nestLevel == 0)
                                 {
                                     //flush block comment
-                                    if (tokenAccumulator.Length > 0)
+                                    if (tokenAccumulator.Length > 1)
                                     {
+                                        tokenAccumulator.Remove(0, 2);
                                         tokens.Add(new Token(currentStatus.Type, tokenAccumulator.ToString(),lineNum,charNum));
                                         tokenAccumulator.Clear();
                                         currentStatus.Type = Token.TokenType.None;
@@ -289,8 +329,9 @@ namespace ralyn_builder
                                 if(nestLevel == 0)
                                 {
                                     //flush single line comment
-                                    if (tokenAccumulator.Length > 0)
+                                    if (tokenAccumulator.Length > 1)
                                     {
+                                        tokenAccumulator.Remove(0, 2);
                                         tokens.Add(new Token(currentStatus.Type, tokenAccumulator.ToString(), lineNum, charNum));
                                         tokenAccumulator.Clear();
                                         currentStatus.Type = Token.TokenType.None;
@@ -315,8 +356,16 @@ namespace ralyn_builder
                             if (currentStatus.CharacterList.Count == 0)
                                 throw new Exception($"Unexpected character '{c}' at line {lineNum} character {charNum}{Environment.NewLine}---->{line.Substring(0, charNum-1)} >>{c}<<");
 
-                            //append first character
-                            tokenAccumulator.Append(c);
+                            if(currentStatus.Type == Token.TokenType.Separator)
+                            {
+                                //add single char as token
+                                tokens.Add(new Token(currentStatus.Type, c.ToString(), lineNum, charNum));
+                                currentStatus.Type = Token.TokenType.None;
+                            }else
+                            {
+                                //append first character
+                                tokenAccumulator.Append(c);
+                            }
                         }
                         else
                         {
@@ -336,8 +385,17 @@ namespace ralyn_builder
                                 if (currentStatus.CharacterList.Count == 0)
                                     throw new Exception($"Unexpected character '{c}' at line {lineNum} character {charNum}{Environment.NewLine}---->{line.Substring(0, charNum-1)} >>{c}<<");
 
-                                //append first character
-                                tokenAccumulator.Append(c);
+                                if (currentStatus.Type == Token.TokenType.Separator)
+                                {
+                                    //add single char as token
+                                    tokens.Add(new Token(currentStatus.Type, c.ToString(), lineNum, charNum));
+                                    currentStatus.Type = Token.TokenType.None;
+                                }
+                                else
+                                {
+                                    //append first character
+                                    tokenAccumulator.Append(c);
+                                }
                             }
 
                             //if end of line flush
