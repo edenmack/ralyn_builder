@@ -9,6 +9,8 @@ namespace ralyn_builder
 {
     class Token
     {
+        //https://blog.beezwax.net/2017/07/07/writing-a-markdown-compiler/
+
         public enum TokenType
         {
             None,
@@ -36,6 +38,7 @@ namespace ralyn_builder
         
         public TokenType Type;
         public string Value;
+        public string Name;
         public int Line;
         public int Char;
         public int OrderOfOperations;
@@ -135,6 +138,7 @@ namespace ralyn_builder
         {
             Type = TokenType.None;
             Value = null;
+            Name = null;
             Line = -1;
             Char = -1;
             OrderOfOperations = -1;
@@ -144,6 +148,16 @@ namespace ralyn_builder
             getTokenType(theType);
             getOrderOfOperations();
             Value = theValue;
+            Name = null;
+            Line = theLine;
+            Char = theChar;
+        }
+        public Token(TokenType theType, string theName, string theValue, int theLine, int theChar)
+        {
+            getTokenType(theType);
+            getOrderOfOperations();
+            Value = theValue;
+            Name = theName;
             Line = theLine;
             Char = theChar;
         }
@@ -153,7 +167,10 @@ namespace ralyn_builder
             if (this.Value == Environment.NewLine)
                 return $"[{this.Type}: [NEWLINE]]";
             else
-                return $"[{this.Type}: {this.Value}]";
+                if(!String.IsNullOrEmpty(this.Name))
+                    return $"[{this.Type}({this.Name}): {this.Value}]";
+                else
+                    return $"[{this.Type}: {this.Value}]";
         }
     }
     class Tree
@@ -307,6 +324,7 @@ namespace ralyn_builder
                 Token.TokenType currentType = new Token.TokenType();
                 currentType = Token.TokenType.None;
                 var tokenAccumulator = new StringBuilder();
+                var tokenName = "";
                 var nestLevel = 0;
                 var stringBeginSequence = "";
                 var stringEndSequence = "";
@@ -370,6 +388,13 @@ namespace ralyn_builder
                             bockTrimChar = 8;
                             currentType = Token.TokenType.SECTION;
                         }
+                        if ((tokenAccumulator.ToString()).ToUpper() == "SEC:")
+                        {
+                            blockAllowed = true;
+                            recurse = true;
+                            bockTrimChar = 4;
+                            currentType = Token.TokenType.SECTION;
+                        }
                         if (tokenAccumulator.ToString() == "//")
                         {
                             blockAllowed = true;
@@ -411,8 +436,9 @@ namespace ralyn_builder
                                 && tokenAccumulator.ToString().Substring(tokenAccumulator.Length - stringEndSequence.Length) == stringEndSequence)
                             {
                                 //found end of string -- flush
-                                tokenAccumulator.Remove(0, stringBeginSequence.Length);
-                                tokenAccumulator.Replace(stringEndSequence, "");
+                                tokenAccumulator
+                                    .Remove(0, stringBeginSequence.Length)
+                                    .Replace(stringEndSequence, "");
                                 tokens.Add(new Token(currentType, tokenAccumulator.ToString(), lineNum, charNum));
                                 tokenAccumulator.Clear();
                                 currentType = Token.TokenType.None;
@@ -486,6 +512,7 @@ namespace ralyn_builder
                                 tokenAccumulator.Clear();
                                 currentType = Token.TokenType.None;
                                 blockAllowed = false;
+                                tokenName = "";
                                 recurse = false;
                             }
                             
@@ -496,7 +523,18 @@ namespace ralyn_builder
                         {
                             tokenAccumulator.Append(c);
                             if (c == '{')
+                            {
+                                if(nestLevel == 0 && tokenAccumulator.Length > bockTrimChar)
+                                {
+                                    //set token Name here
+                                    tokenName = tokenAccumulator.ToString()
+                                        .Substring(bockTrimChar)
+                                        .TrimEnd(new char[] { '{'})
+                                        .Trim();
+                                    tokenAccumulator.Clear();
+                                }
                                 ++nestLevel;
+                            }
                             if (c == '}')
                             {
                                 --nestLevel;
@@ -505,11 +543,13 @@ namespace ralyn_builder
                                     //flush block 
                                     if (tokenAccumulator.Length > 1)
                                     {
-                                        tokenAccumulator.Remove(0, bockTrimChar);
-                                        tokens.Add(new Token(currentType, tokenAccumulator.ToString(), lineNum, charNum));
+                                        //tokenAccumulator.Remove(0, bockTrimChar);
+                                        tokenAccumulator.Length--;
+                                        tokens.Add(new Token(currentType, tokenName, tokenAccumulator.ToString(), lineNum, charNum));
                                         tokenAccumulator.Clear();
                                         currentType = Token.TokenType.None;
                                         blockAllowed = false;
+                                        tokenName = "";
                                     }
                                     continue;
                                 }
@@ -527,6 +567,7 @@ namespace ralyn_builder
                                         tokenAccumulator.Clear();
                                         currentType = Token.TokenType.None;
                                         blockAllowed = false;
+                                        tokenName = "";
                                     }
                                     //tokens.Add(new Token(Token.TokenType.WhiteSpace, Environment.NewLine, lineNum, line.Length));
                                     break;
@@ -551,6 +592,7 @@ namespace ralyn_builder
                                 || c == ';'
                                 || c == '('
                                 || c == ')'
+                                || c == ','
                                 || charNum == line.Length)
                             {
                                 //flush
@@ -561,6 +603,7 @@ namespace ralyn_builder
                                 tokenAccumulator.Clear();
                                 currentType = Token.TokenType.None;
                                 blockAllowed = false;
+                                tokenName = "";
                                 recurse = false;
                             }
                             else
