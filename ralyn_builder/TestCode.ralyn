@@ -1,21 +1,21 @@
-﻿DOC: sample ralyn program
-TODO: {
-	VAR:	define data or struct types
-	OBJECT: data objects
-	FN:		subroutine definition
-	LIST:	define lists or array types
-	LOOP:	control structure
-	TEST:	control structure
-}
+﻿<rem>{this is a test
+of multiline comments
+wondering if I should 
+implement // notation}
 
-SEC: main{
-	VAR: string vars for printing {
-		s1<string> = "hello world";
-		s2<string> = $("hello programmer");
-		s3<string>; //string is not initiated... null value or empty?
+<rem> : "LIST"
+<list>:{
+	<string>:$("list item 1")
+	<string>:$("list item 2")
+	<list>:{
+		<bool>:true
+		<bool>:false
 	}
-
-	//print() -> Console.WriteLine()... for now at least
-	print(s1);
-	print(s2);
 }
+
+<rem>:"SIMPLE VALUES"
+<string>:$("This is a string")
+<num>:1.23e-2
+<bool>:true
+<mult-string>:$("this string is
+multiple lines")
