@@ -1,21 +1,21 @@
-﻿<rem>{this is a test
-of multiline comments
-wondering if I should 
-implement // notation}
+﻿//<t>{comment
+with crazy stuff in it}
 
-<rem> : "LIST"
-<list>:{
-	<string>:$("list item 1")
-	<string>:$("list item 2")
-	<list>:{
-		<bool>:true
-		<bool>:false
+<rem>	"LIST"
+<list>{
+	<string>$("list item 1")
+	<string>$("list item 2")
+	<list>{
+		<bool>true
+		<bool>false
 	}
 }
 
-<rem>:"SIMPLE VALUES"
+<rem>"SIMPLE VALUES"
 <string>:$("This is a string")
+<num>1.23e-2
 <num>:1.23e-2
-<bool>:true
-<mult-string>:$("this string is
+<bool>true
+<bool>:false
+<mult-string> $("this string is
 multiple lines")

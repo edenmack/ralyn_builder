@@ -7,229 +7,390 @@ using System.Text.RegularExpressions;
 
 namespace ralyn_builder
 {
-    class Token
+    class ralynTag
     {
-        //https://blog.beezwax.net/2017/07/07/writing-a-markdown-compiler/
+        public string nameSpace;
+        public string name;
 
-        public enum TokenType
+        public ralynTag()
         {
-            None,
-            Word,
-            Identifier,
-            Identifier_Var,
-            Identifier_Fn,
-            Keyword,
-            Separator,
-            Group_Delimiter,
-            Operator,
-            Comment,
-            Literal,
-            Literal_String,
-            Literal_Num,
-            META_CODE,
-            SECTION,
-            TODO,
-            DOC,
-            NOTE,
-            DEBUG,
-            WhiteSpace
+            this.nameSpace = "";
+            this.name = "";
         }
-        public static List<string> keywords = new List<string>() { "in", "var", "let", "for", "foreach", "while", "when", "break", "continue", "use", "using", "import", "data", "link", "type", "class", "struct" };
-        
-        public TokenType Type;
-        public string Value;
-        public string Name;
-        public int Line;
-        public int Char;
-        public int OrderOfOperations;
-
-        private void getTokenType(TokenType t)
+        public ralynTag(string tagText)
         {
-            this.Type = t;
+            tagText = tagText.Trim();
+            tagText = tagText.Trim(new char[] { '<', '>' });
 
-            if (this.Type == TokenType.Word)
+            var parts = tagText.Split(new char[] { '|' },StringSplitOptions.RemoveEmptyEntries);
+            if(parts.Length == 2)
             {
-                if (keywords.Contains(this.Value))
-                {
-                    this.Type = TokenType.Keyword;
-                }
-                else
-                {
-                    this.Type = TokenType.Identifier;
-                }
-            }
-        }
-        private void getOrderOfOperations()
-        {
-            //default
-            this.OrderOfOperations = -1;
-
-            if (String.IsNullOrEmpty(this.Value)) return;
-
-            if(this.Type == TokenType.Operator)
+                this.nameSpace = parts[0];
+                this.name = parts[1];
+            }else if(parts.Length == 1)
             {
-                //https://en.wikipedia.org/wiki/Order_of_operations
-
-                //assignment
-                if (this.Value == "="
-                    || this.Value == "+="
-                    || this.Value == "-="
-                    || this.Value == "*="
-                    || this.Value == "/="
-                    || this.Value == "%="
-                    || this.Value == "&="
-                    || this.Value == "|="
-                    || this.Value == "^="
-                    || this.Value == "<<="
-                    || this.Value == ">>=") this.OrderOfOperations = 14;
-
-                //?: temary conditional would be 13... probably not supported in ralyn
-
-                //Logical
-                if (this.Value == "||") this.OrderOfOperations = 12;
-                if (this.Value == "&&") this.OrderOfOperations = 11;
-
-                //Bitwise Joins
-                if (this.Value == "|") this.OrderOfOperations = 10; //OR
-                if (this.Value == "^") this.OrderOfOperations = 9; //XOR
-                if (this.Value == "&") this.OrderOfOperations = 8; //AND
-
-                //Comparison
-                if (this.Value == "=="
-                    || this.Value == "!=") this.OrderOfOperations = 7;
-                if (this.Value == "<"
-                    || this.Value == "<="
-                    || this.Value == ">"
-                    || this.Value == ">=") this.OrderOfOperations = 6;
-
-                //Bitwise Shift
-                if (this.Value == "<<"
-                    || this.Value == ">>") this.OrderOfOperations = 5;
-
-                //Addition/Subtraction
-                if (this.Value == "+"
-                    || this.Value == "-") this.OrderOfOperations = 4;
-
-                //Multiplication/Division/Modulo
-                if (this.Value == "*"
-                    || this.Value == "/"
-                    || this.Value == "%") this.OrderOfOperations = 3;
-
-                //unary operators
-                if (this.Value == "!"
-                    || this.Value == "++"
-                    || this.Value == "--") this.OrderOfOperations = 2;
-
-
-                //fn call, scope, array/member access would be 1
-
-                if(this.OrderOfOperations == -1)
-                {
-                    //didn't find this operator
-                    throw new Exception($"Unknown operator {this.Value} at line {this.Line}");
-                }
-            }
-            else
+                this.nameSpace = "";
+                this.name = parts[0];
+            }else
             {
-                //don't worry about this for now
+                this.nameSpace = "";
+                this.name = "";
             }
-        }
-        public Token()
-        {
-            Type = TokenType.None;
-            Value = null;
-            Name = null;
-            Line = -1;
-            Char = -1;
-            OrderOfOperations = -1;
-        }
-        public Token(TokenType theType, string theValue, int theLine, int theChar)
-        {
-            getTokenType(theType);
-            getOrderOfOperations();
-            Value = theValue;
-            Name = null;
-            Line = theLine;
-            Char = theChar;
-        }
-        public Token(TokenType theType, string theName, string theValue, int theLine, int theChar)
-        {
-            getTokenType(theType);
-            getOrderOfOperations();
-            Value = theValue;
-            Name = theName;
-            Line = theLine;
-            Char = theChar;
         }
 
         public override string ToString()
         {
-            if (this.Value == Environment.NewLine)
-                return $"[{this.Type}: [NEWLINE]]";
+            if(this.nameSpace != "")
+                return "<" + this.nameSpace + "|" + this.name + ">";
             else
-                if(!String.IsNullOrEmpty(this.Name))
-                    return $"[{this.Type}({this.Name}): {this.Value}]";
-                else
-                    return $"[{this.Type}: {this.Value}]";
+                return "<" + this.name + ">";
         }
     }
-    class Tree
+    class ralynValue
     {
-        public class Node
+        public enum TypeOf
         {
-            private Token m_token;
-            private Node m_parent;
-            private List<Node> m_children;
+            Undetermined,
+            Null,
+            True,
+            False,
+            Number,
+            String,
+            rList,
+            ControlCharacter,
+            Tag,
+            Comment
+        }
 
-            private Node(Token t)
-            {
-                m_token = t;
-                m_parent = null;
-            }
-            public static Node CreateRootNode()
-            {
-                Node n = new Node(new Token(Token.TokenType.None, "ROOT",-1,-1));
-                return n;
-            }
-            public Node Add(Token t)
-            {
-                Node n = new Node(t);
-                n.m_parent = this;
-                m_children.Add(n);
+        private ralynValue.TypeOf type;
+        private ralynTag tag;
+        private List<ralynValue> children;
+        private string sValue;
+        private double nValue;      
+        private string representation;
+        private string error;
+        private int lineNumber;
+        private int charNumber;
 
-                return n;
-            }
-
-            public Node Parent
+        #region GET/SET
+        public ralynValue.TypeOf Type
+        { get { return this.type; } }
+        public ralynTag Tag
+        {
+            get { return this.tag; }
+            set { this.tag = value; }
+        }
+        public object Value
+        {
+            get
             {
-                get
+                switch (this.type)
                 {
-                    return m_parent;
+                    case TypeOf.Null:
+                        return null;
+                    case TypeOf.True:
+                        return true as bool?;
+                    case TypeOf.False:
+                        return false as bool?;
+                    case TypeOf.Number:
+                        return this.nValue as double?;
+                    case TypeOf.String:
+                        return this.sValue as string;
+                    case TypeOf.rList:
+                        return this.children as List<ralynValue>;
+                    case TypeOf.Comment:
+                        return this.representation as string;
+                    default:
+                        return null;                    
                 }
             }
-            public Node Child(int i)
+            set
             {
-                return m_children[i];
-            }
-            public Node Sibling(int i)
-            {
-                return this.m_parent.m_children[i];
-            }
+                try
+                {
+                    this.representation = value.ToString();
+                    this.type = looksLike(this.representation);
 
+                    switch (this.type)
+                    {
+                        case TypeOf.Null:
+                        case TypeOf.True:
+                        case TypeOf.False:
+                            this.sValue = "";
+                            this.nValue = double.NaN;
+                            this.children = null;
+                            break;
+                        case TypeOf.String:
+                            this.nValue = double.NaN;
+                            this.children = null;
+
+                            var sTest = ralynValue.stringTest(this.representation);
+                            if (sTest.Key)
+                            {
+                                this.sValue = sTest.Value;
+                            }
+                            else
+                            {
+                                //bad string/empty string
+                                this.sValue = "";
+                                //this.representation = "EMPTY STRING";
+                            }
+                            break;
+                        case TypeOf.Number:
+                            this.sValue = "";
+                            this.children = null;
+
+                            this.nValue = ralynValue.parseNumber(this.representation);
+                            break;
+                        case TypeOf.Tag:
+                            //this really isn't the best way to assign a tag value
+                            this.tag = new ralynTag(value.ToString());
+
+                            this.representation = "";
+                            this.type = TypeOf.Undetermined;
+                            break;
+                        case TypeOf.Comment:
+                            this.representation = value.ToString().Substring(2);
+                            this.sValue = "";
+                            this.children = null;
+                            this.nValue = double.NaN;
+                            break;
+                        case TypeOf.rList:
+                            //this doesn't work
+                            this.children = value as List<ralynValue>;
+                            break;
+                        default:
+                            //shouldn't be able to get here
+                            this.sValue = "";
+                            this.nValue = double.NaN;
+                            this.children = null;
+                            break;
+                    }
+                }catch(Exception valueEx) { this.error = valueEx.Message;this.type = TypeOf.Undetermined; }                        
+            }
         }
-
-        public Node root;
-
-        public Tree()
+        public List<ralynValue> Children
         {
-            root = Tree.Node.CreateRootNode();
+            get { return this.children; }
+            set
+            {
+                this.children = value;
+                this.type = TypeOf.rList;
+            }
         }
+        public int LineNumber
+        {
+            get { return this.lineNumber; }
+            set { this.lineNumber = value; }
+        }
+        public int CharNumber
+        {
+            get { return this.charNumber; }
+            set { this.charNumber = value; }
+        }
+        #endregion GET/SET
+
+        #region Constructors
+        public ralynValue()
+        {
+            this.type = ralynValue.TypeOf.Null;
+            this.tag = new ralynTag();
+            this.sValue = "";
+            this.nValue = double.NaN;
+            this.children = null;
+            this.representation = "null";
+            this.lineNumber = -1;
+            this.charNumber = -1;
+        }
+        public ralynValue(object value)
+        {
+            this.lineNumber = -1;
+            this.charNumber = -1;
+            Value = value;
+        }
+        #endregion Constuctors
+
+        public static ralynValue.TypeOf looksLike(string s)
+        {
+            s = s.TrimStart(new char[] { ' ', ':', '\t' }).Trim().ToUpper();
+            if(s.Length == 0)
+            {
+                return TypeOf.Undetermined;
+            }
+            else if(s.Length >= 2 && 
+                s[0] == '/' && 
+                s[1] == '/')
+            {
+                return TypeOf.Comment;
+            }
+            else if (s == "NULL")
+            {
+                return TypeOf.Null;
+            }
+            else if (s == "TRUE")
+            {
+                return TypeOf.True;
+            }
+            else if (s == "FALSE")
+            {
+                return TypeOf.False;
+            }
+            else if (s.Length > 0 && (
+               s[0] == '"' ||
+               s[0] == '\'' ||               
+               s[0] == '$'))
+            {
+                return TypeOf.String;
+            }else if(s.Length > 0 && 
+                s[0] == '<')
+            {
+                return TypeOf.Tag;
+            }
+            else if (s.Length > 0 &&
+                s[0] == '{')
+            {
+                return TypeOf.rList;
+            }
+            else if (s.Length > 0 && (
+                s[0] == '1' ||
+                s[0] == '2' ||
+                s[0] == '3' ||
+                s[0] == '4' ||
+                s[0] == '5' ||
+                s[0] == '6' ||
+                s[0] == '7' ||
+                s[0] == '8' ||
+                s[0] == '9' ||
+                s[0] == '0' ||
+                s[0] == '-' ||
+                s[0] == '+' ||
+                s[0] == '.'))
+            {
+                return TypeOf.Number;
+            }
+            else if (s.Length > 0 && (
+               s[0] == ':' ||
+               s[0] == ';' ||
+               s[0] == ','))
+            {
+                return TypeOf.ControlCharacter;
+            }
+            else
+            {
+                return TypeOf.Undetermined;
+            }
+
+        }
+
+        #region Number stuff
+        public static double parseNumber(string num)
+        {
+            //var re = new System.Text.RegularExpressions.Regex(@"^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$");
+            //var isNum = re.Match(num).Success;
+            double v;
+            try
+            {
+                v = double.Parse(num, System.Globalization.NumberStyles.Float);
+            }
+            catch (Exception numEx)
+            {
+                v = double.NaN;
+                //Console.WriteLine("ERROR: "+num+" -> " + numEx.Message);
+            }
+            return v;
+        }
+        #endregion Number stuff
+
+        #region String stuff
+        /// <summary>
+        /// ralyn strings come in several varieties:
+        ///   1. "string" -- double quoted
+        ///   2. 'string' -- single quoted
+        ///   3. <string> -- angle quoted for identifiers
+        ///   4. $("string") -- special string where " can be replaced by any character
+        /// </summary>
+        public static KeyValuePair<bool,string> stringTest(string s)
+        {
+            var stringValue = "";
+            var isString = false;
+
+            s = s.TrimStart(new char[] { ' ', ':', '\t' }).Trim().ToUpper();
+
+            if (s.Length >= 5 && s[0] == '$' && s[1] == '(')
+            {
+                var quote = s[2].ToString();
+                if (s.IndexOf(quote + ")") == s.Length - 2)
+                {
+                    isString = true;
+                    stringValue = s.Substring(3, s.Length - 5);
+                }
+            }
+            if (s.Length >= 2 && s[0] == '"')
+            {
+                var s1 = s.Replace("\\\"", ""); //ignore escaped double quotes
+                isString = (s1.IndexOf("\"",1) == s1.Length - 1);
+                stringValue = s.Substring(1, s.Length - 2);
+            }
+            if (s.Length >= 2 && s[0] == '\'')
+            {
+                var s1 = s.Replace("\\'", ""); //ignore escaped single quotes
+                isString = (s1.IndexOf("'",1) == s1.Length - 1);
+                stringValue = s.Substring(1, s.Length - 2);
+            }
+            if (s.Length >= 2 && s[0] == '<')
+            {
+                isString = (s.IndexOf(">") == s.Length - 1);
+                stringValue = s.Substring(1, s.Length - 2);
+            }
+
+            return new KeyValuePair<bool, string>(isString, stringValue);
+        }
+        #endregion String stuff
+
         public override string ToString()
         {
-            throw new NotImplementedException();
+            return this.ToString(0);
         }
-
+        public string ToString(int indent)
+        {
+            try
+            {                
+                //single value
+                switch(this.type)
+                {
+                    case TypeOf.Null:
+                        return this.tag + " : " + "Null";// + " -> NULL";
+                    case TypeOf.True:
+                        return this.tag + " : " + "true";// + " -> bool";
+                    case TypeOf.False:
+                        return this.tag + " : " + "false";// + " -> bool";
+                    case TypeOf.String:
+                        return this.tag + " : " + this.sValue;// + " -> String";
+                    case TypeOf.Number:
+                        return this.tag + " : " + this.nValue.ToString();// + " -> Number";
+                    case TypeOf.Comment:
+                        return "//" + this.tag + " : " + this.representation;// + " -> Comment";
+                    case TypeOf.rList:
+                        var ret = new System.Text.StringBuilder();
+                        ret.AppendLine(this.tag + " : {");
+                        ++indent;
+                        foreach (ralynValue r in this.children)
+                        {
+                            ret.AppendLine(new String('\t', indent) + r.ToString(indent));
+                        }
+                        --indent;
+                        ret.AppendLine(new String('\t', indent) + "}");
+                        return ret.ToString();
+                    default:
+                        return "";
+                }
+            }catch(Exception outputEx)
+            {                
+                return "<ralyn|Exception> : { <line> : " + this.lineNumber.ToString() + " <char> : " + this.charNumber.ToString() + " <message> : $(' " + outputEx.Message + "')";
+            }
+        }
     }
+
     class Program
     {
         //UI
@@ -243,12 +404,13 @@ namespace ralyn_builder
                 Console.Clear();
                 Console.WriteLine("ralyn Builder");
                 Console.WriteLine($" 1. Select File (current file->{fileName})");
-                Console.WriteLine(" 2. Lex code");
-                //Console.WriteLine(" 3. Parser code");
-                //Console.WriteLine(" 4. Create Action Tree from code");
-                //Console.WriteLine(" 5. Transpile code");
-                //Console.WriteLine(" 6. Compile code");
-                //Console.WriteLine(" 7. Execute code");
+                Console.WriteLine(" 2. ad hoc Test");
+                Console.WriteLine(" 3. Lex code");
+                //Console.WriteLine(" 4. Parser code");
+                //Console.WriteLine(" 5. Create Action Tree from code");
+                //Console.WriteLine(" 6. Transpile code");
+                //Console.WriteLine(" 7. Compile code");
+                //Console.WriteLine(" 8. Execute code");
                 Console.WriteLine(" 0. Exit");
                 var key = Console.ReadKey();
 
@@ -262,7 +424,8 @@ namespace ralyn_builder
                         if (fi.Exists)
                         {
                             fileName = tempFile;
-                        }else
+                        }
+                        else
                         {
                             Console.WriteLine($"Could not locate {tempFile}, reverting to {fileName}");
                             Console.WriteLine("press any key to continue...");
@@ -270,15 +433,26 @@ namespace ralyn_builder
                         }
                         break;
                     case '2':
+                        Console.WriteLine();
+                        var testValue = "eden";
+                        var test = ralynValue.parseNumber(testValue);
+                        //Console.WriteLine("no ad hoc test configured");
+                        Console.WriteLine($"{testValue}->{test}");
+
+                        Console.WriteLine("press any key to continue...");
+                        Console.ReadKey();
+                        break;
+                    case '3':
                         //Lex
                         Console.WriteLine();
                         try
                         {
                             var codeFromFile = System.IO.File.ReadAllText(fileName);
                             var result = Lex(codeFromFile);
-                            foreach (var t in result)
-                                Console.WriteLine(t.ToString());
-                        }catch(Exception lexEx)
+                            foreach(var r in result)
+                            Console.WriteLine(r);
+                        }
+                        catch (Exception lexEx)
                         {
                             Console.WriteLine(lexEx.Message);
                         }
@@ -309,408 +483,241 @@ namespace ralyn_builder
             }
         }
 
+
         //Builder
         #region Lexical Analysis        
-        static List<Token> Lex(string code)
+        static List<ralynValue> Lex(string code)
         {
             //setup vars
-            var tokens = new List<Token>();
+            var rObj = new List<ralynValue>();
             string line;
             using (var _code = new System.IO.StringReader(code))
             {
                 #region vars
-                var lineNum = 0;
-                var charNum = 0;                
-                Token.TokenType currentType = new Token.TokenType();
-                currentType = Token.TokenType.None;
-                var tokenAccumulator = new StringBuilder();
-                var tokenName = "";
-                var nestLevel = 0;
+                var accumulator = new StringBuilder();
                 var stringBeginSequence = "";
                 var stringEndSequence = "";
-                var blockAllowed = false;
-                var bockTrimChar = 0;
-                var recurse = false;
+                var currentTypeOf = ralynValue.TypeOf.Undetermined;
+                var currentValue = new ralynValue();
+
+                var nestLevel = 0;
+                var isComment = false;
                 #endregion vars
 
                 while (_code.Peek() > -1)
                 {
-                    line = _code.ReadLine().Trim();
-                    if (lineNum > 0 && currentType == Token.TokenType.None)
+                    line = _code.ReadLine();//.Trim();
+                    ++currentValue.LineNumber;
+                    currentValue.CharNumber = -1;
+
+                    if(accumulator.Length > 0)
                     {
-                        tokens.Add(new Token(Token.TokenType.WhiteSpace, Environment.NewLine, lineNum + 1, 0));
+                        accumulator.AppendLine("");
                     }
-                    ++lineNum;
-                    charNum = 0;
 
-                    foreach (char c in line)
+                    foreach(char c in line)
                     {
-                        ++charNum;
-                        var cLength = tokenAccumulator.Length;
+                        ++currentValue.CharNumber;
 
-                        #region meta code
-                        ///with the exception of SECTION these currently act as comments
-                        ///eventually I'd like to add some additional functionality... probably
-                        ///on the developer side of things.
-                        
-                        if ((tokenAccumulator.ToString()).ToUpper() == "TODO:")
-                        {
-                            blockAllowed = true;
-                            recurse = false;
-                            bockTrimChar = 5;
-                            currentType = Token.TokenType.TODO;
-                        }
-                        if ((tokenAccumulator.ToString()).ToUpper() == "DEBUG:")
-                        {
-                            blockAllowed = true;
-                            recurse = false;
-                            bockTrimChar = 6;
-                            currentType = Token.TokenType.DEBUG;
-                        }
-                        if ((tokenAccumulator.ToString()).ToUpper() == "DOC:")
-                        {
-                            blockAllowed = true;
-                            recurse = false;
-                            bockTrimChar = 4;
-                            currentType = Token.TokenType.DOC;
-                        }
-                        if ((tokenAccumulator.ToString()).ToUpper() == "NOTE:")
-                        {
-                            blockAllowed = true;
-                            recurse = false;
-                            bockTrimChar = 5;
-                            currentType = Token.TokenType.NOTE;
-                        }
-                        if ((tokenAccumulator.ToString()).ToUpper() == "SECTION:")
-                        {
-                            blockAllowed = true;
-                            recurse = true;
-                            bockTrimChar = 8;
-                            currentType = Token.TokenType.SECTION;
-                        }
-                        if ((tokenAccumulator.ToString()).ToUpper() == "SEC:")
-                        {
-                            blockAllowed = true;
-                            recurse = true;
-                            bockTrimChar = 4;
-                            currentType = Token.TokenType.SECTION;
-                        }
-                        if (tokenAccumulator.ToString() == "//")
-                        {
-                            blockAllowed = true;
-                            recurse = false;
-                            bockTrimChar = 2;
-                            currentType = Token.TokenType.Comment;
-                        }
-                        #endregion meta code
-                        #region string lexing
-                        ///strings can look like the following:
-                        ///1. "surrounded by double quotes"
-                        ///2. 'surrounded by single quotes'
-                        ///3. $(/surrounded by user defined character/)
-                        ///note that you can do stuff like this: $(""Hello," she said.")
-                        
-                        if (currentType == Token.TokenType.Literal_String
-                            || tokenAccumulator.ToString() == "'"
-                            || tokenAccumulator.ToString() == "\""
-                            || (cLength == 1
-                                && tokenAccumulator[0] == '$'
-                                && c == '(')
-                                )
-                        {
-                            //this is a string
-                            currentType = Token.TokenType.Literal_String;
+                        accumulator.Append(c);                       
 
-                            tokenAccumulator.Append(c);
+                        //Console.WriteLine(lineNum.ToString() + ":" + charNum.ToString() + "  " + accumulator.ToString() + "->" + currentTypeOf.ToString());
 
-                            if (tokenAccumulator[0] == '"') stringBeginSequence = stringEndSequence = "\"";
-                            if (tokenAccumulator[0] == '\'') stringBeginSequence = stringEndSequence = "'";
-                            if (tokenAccumulator.Length > 2 && tokenAccumulator[0] == '$' && tokenAccumulator[1] == '(')
-                            {
-                                stringBeginSequence = "$(" + tokenAccumulator[2];
-                                stringEndSequence = tokenAccumulator[2] + ")";
-                            }
-
-                            if (stringEndSequence.Length > 0
-                                && tokenAccumulator.Length >= stringEndSequence.Length * 2
-                                && tokenAccumulator.ToString().Substring(tokenAccumulator.Length - stringEndSequence.Length) == stringEndSequence)
-                            {
-                                //found end of string -- flush
-                                tokenAccumulator
-                                    .Remove(0, stringBeginSequence.Length)
-                                    .Replace(stringEndSequence, "");
-                                tokens.Add(new Token(currentType, tokenAccumulator.ToString(), lineNum, charNum));
-                                tokenAccumulator.Clear();
-                                currentType = Token.TokenType.None;
-                                stringEndSequence = "";
-                                stringBeginSequence = "";
-                                continue;
-                            }
-                            //if (charNum == line.Length) tokenAccumulator.Append(Environment.NewLine);
-
-                            continue;
-                        }
-                        #endregion string lexing
-                        #region number lexing
-                        ///all numbers start with 0-9 pr -
-                        ///maybe use prefixes: 0x hex, 0o octal, 0b binary
-
-                        if (currentType == Token.TokenType.Literal_Num
-                            || cLength > 1
-                            && (
-                                (
-                                    tokenAccumulator[0] > 47
-                                    && tokenAccumulator[0] < 58
-                                )
-                                || tokenAccumulator[0] == '-'
-                               )
-                            )
+                        if (currentTypeOf == ralynValue.TypeOf.Undetermined)
                         {
-                            //this looks like a number
-                            currentType = Token.TokenType.Literal_Num;
+                            currentTypeOf = ralynValue.looksLike(accumulator.ToString());
+                        }                           
+                        if (currentTypeOf == ralynValue.TypeOf.Undetermined) continue;
 
-                            //if we are going implement hex, octal, binary etc. add those indicators in here
-                            if (charNum != line.Length
-                                && ( c == '0'
-                                || c == '1'
-                                || c == '2'
-                                || c == '3'
-                                || c == '4'
-                                || c == '5'
-                                || c == '6'
-                                || c == '7'
-                                || c == '8'
-                                || c == '9'
-                                || c == '.'
-                                || c == 'e'
-                                || c == 'E'
-                                || c == '-')
-                                )
-                            {
-                                tokenAccumulator.Append(c);
-                                //make sure this is a VALID number
-                                var isValid = true;
-                                var numValidator = tokenAccumulator.ToString().Split(new char[] { 'e', 'E' }, StringSplitOptions.None);
+                        //OK, we think we know what we are dealing with
+                        switch (currentTypeOf)
+                        {
+                            #region simple value lexing
+                            case ralynValue.TypeOf.Null:
+                                currentValue.Value = "null";
+                                rObj.Add(currentValue);
 
-                                if (numValidator.Length > 2) isValid = false; //only one 'e'
-                                foreach(var s in numValidator)
+                                //reset
+                                accumulator.Length = 0;
+                                currentTypeOf = ralynValue.TypeOf.Undetermined;
+                                currentValue = new ralynValue();
+                                break;
+                            case ralynValue.TypeOf.True:
+                                currentValue.Value = "true";
+                                rObj.Add(currentValue);
+
+                                //reset
+                                accumulator.Length = 0;
+                                currentTypeOf = ralynValue.TypeOf.Undetermined;
+                                currentValue = new ralynValue();
+                                break;
+                            case ralynValue.TypeOf.False:
+                                currentValue.Value = "false";
+                                rObj.Add(currentValue);
+
+                                //reset
+                                accumulator.Length = 0;
+                                currentTypeOf = ralynValue.TypeOf.Undetermined;
+                                currentValue = new ralynValue();
+                                break;
+                            case ralynValue.TypeOf.Tag:
+                                //end condition is >:
+                                if (c == '>')
                                 {
-                                    if(s.Split(new char[] { '.' }, StringSplitOptions.None).Length > 2) isValid = false; //only one '.' per section                                    
-                                    if (s.LastIndexOf('-') > 0) isValid = false; //negation must be first char in section if exists
+                                    currentValue.Tag = new ralynTag(accumulator.ToString());
+
+                                    //reset -- sort of
+                                    accumulator.Length = 0;
+                                    currentTypeOf = ralynValue.TypeOf.Undetermined;
+                                    //currentValue = new ralynValue(); //DON'T REST THE ENTIRE VALUE!
                                 }
-
-                                if (!isValid)
+                                break;
+                            case ralynValue.TypeOf.Number:
+                                #region Number lexing
+                                //keep accumulating until encouter , or ; 
+                                if (c == ',' || c == ';' || c == ' ' || currentValue.CharNumber == line.Length-1)
                                 {
-                                    throw new Exception($"Invalid number sequence {tokenAccumulator.ToString()} detected at line {lineNum} character {charNum}");
-                                }
-
-                            }else
-                            {
-                                //flush
-                                if (charNum == line.Length) tokenAccumulator.Append(c);
-                                tokens.Add(new Token(currentType, tokenAccumulator.ToString(), lineNum, charNum));
-                                tokenAccumulator.Clear();
-                                currentType = Token.TokenType.None;
-                                blockAllowed = false;
-                                tokenName = "";
-                                recurse = false;
-                            }
-                            
-                        }
-                        #endregion number lexing
-                        #region block
-                        if (blockAllowed)
-                        {
-                            tokenAccumulator.Append(c);
-                            if (c == '{')
-                            {
-                                if(nestLevel == 0 && tokenAccumulator.Length > bockTrimChar)
-                                {
-                                    //set token Name here
-                                    tokenName = tokenAccumulator.ToString()
-                                        .Substring(bockTrimChar)
-                                        .TrimEnd(new char[] { '{'})
-                                        .Trim();
-                                    tokenAccumulator.Clear();
-                                }
-                                ++nestLevel;
-                            }
-                            if (c == '}')
-                            {
-                                --nestLevel;
-                                if (nestLevel == 0)
-                                {
-                                    //flush block 
-                                    if (tokenAccumulator.Length > 1)
+                                    if (c == ',' || c == ';' || c == ' ')
                                     {
-                                        //tokenAccumulator.Remove(0, bockTrimChar);
-                                        tokenAccumulator.Length--;
-                                        tokens.Add(new Token(currentType, tokenName, tokenAccumulator.ToString(), lineNum, charNum));
-                                        tokenAccumulator.Clear();
-                                        currentType = Token.TokenType.None;
-                                        blockAllowed = false;
-                                        tokenName = "";
+                                        accumulator.Length--; //nerf delimiter
                                     }
-                                    continue;
-                                }
-                            }
 
-                            if (charNum == line.Length)
-                            {
-                                if (nestLevel == 0)
-                                {
-                                    //flush single line
-                                    if (tokenAccumulator.Length > 1)
+                                    if(accumulator[0] == ':')
                                     {
-                                        tokenAccumulator.Remove(0, bockTrimChar);
-                                        tokens.Add(new Token(currentType, tokenAccumulator.ToString(), lineNum, charNum));
-                                        tokenAccumulator.Clear();
-                                        currentType = Token.TokenType.None;
-                                        blockAllowed = false;
-                                        tokenName = "";
-                                    }
-                                    //tokens.Add(new Token(Token.TokenType.WhiteSpace, Environment.NewLine, lineNum, line.Length));
-                                    break;
+                                        currentValue.Value = accumulator.ToString().Substring(1);
+                                    }else
+                                    {
+                                        currentValue.Value = accumulator.ToString();
+                                    }                                    
+                                    rObj.Add(currentValue);
+
+                                    //reset
+                                    accumulator.Length = 0;
+                                    currentTypeOf = ralynValue.TypeOf.Undetermined;
+                                    currentValue = new ralynValue();
                                 }
-                                else
+                                #endregion Number lexing                        
+                                break;
+                            case ralynValue.TypeOf.String:
+                                #region String lexing
+                                #region String boundary conditions
+
+                                var test = accumulator.ToString().Trim().TrimStart(new char[] { ':', ' ', '\t' });
+
+                                if(stringBeginSequence == ""
+                                    && test.Length > 0 
+                                    && test[0] == '"')
                                 {
-                                    tokenAccumulator.Append(Environment.NewLine);
-                                    break;
+                                    stringBeginSequence = "\"";
+                                    stringEndSequence = "\"";
+
+                                }else if(stringBeginSequence == ""
+                                    && test.Length > 0
+                                    && test[0] == '\'')
+                                {
+                                    stringBeginSequence = "\'";
+                                    stringEndSequence = "\'";
+
                                 }
+                                else if (stringBeginSequence == "" 
+                                    && test.Length > 2 
+                                    && test[0] == '$' 
+                                    && test[1] == '(')
+                                {
+                                    stringBeginSequence = "$(" + test[2].ToString();
+                                    stringEndSequence = test[2].ToString() + ")";
 
-                            }
-                        }
-                        #endregion block
+                                }
+                                #endregion String boundary conditions
+                                //accumulate until encounter string end condition
+                                if (test.Length >= 2 
+                                    && stringEndSequence != ""
+                                    && test.ToString().EndsWith(stringEndSequence)
+                                    && !test.ToString().EndsWith("\\" + stringEndSequence)
+                                    )
+                                {
+                                    currentValue.Value = test.ToString();
+                                    rObj.Add(currentValue);
 
-                        //we don't know what this is yet
-                        if (currentType == Token.TokenType.None)
-                        {
-                            if (c == '\n'
-                                || c == '\r'
-                                || c == '\t'
-                                || c == ' '
-                                || c == ';'
-                                || c == '('
-                                || c == ')'
-                                || c == ','
-                                || charNum == line.Length)
-                            {
-                                //flush
-                                if(String.IsNullOrWhiteSpace(tokenAccumulator.ToString()))
-                                    tokens.Add(new Token(Token.TokenType.WhiteSpace, tokenAccumulator.ToString(), lineNum, charNum));
-                                else
-                                    tokens.Add(new Token(Token.TokenType.Identifier, tokenAccumulator.ToString(), lineNum, charNum));
-                                tokenAccumulator.Clear();
-                                currentType = Token.TokenType.None;
-                                blockAllowed = false;
-                                tokenName = "";
-                                recurse = false;
-                            }
-                            else
-                            {
-                                tokenAccumulator.Append(c);
-                            }
+                                    //reset
+                                    accumulator.Length = 0;
+                                    currentTypeOf = ralynValue.TypeOf.Undetermined;
+                                    currentValue = new ralynValue();
+                                    stringBeginSequence = "";
+                                    stringEndSequence = "";
+                                }
+                                #endregion String lexing
+                                break;
+                            #endregion simple value lexing
+
+                            case ralynValue.TypeOf.Comment:
+                                isComment = true;
+                                accumulator.Length = 0;
+                                currentTypeOf = ralynValue.TypeOf.Undetermined;
+                                break;
+
+                            case ralynValue.TypeOf.rList:
+                                if(c == '{')
+                                {
+                                    ++nestLevel;
+                                }
+                                if(c == '}')
+                                {
+                                    --nestLevel;
+                                }
+                                if(nestLevel == 0)
+                                {
+                                    if (!isComment)
+                                    {
+                                        //currentValue.Value = Lex(accumulator.ToString().Trim(new char[] { '{', '}' }));
+                                        currentValue.Children = Lex(accumulator.ToString().Trim(new char[] { '{', '}' }));
+                                        rObj.Add(currentValue);
+                                    }else
+                                    {
+                                        //currentValue.Type = ralynValue.TypeOf.Comment;
+                                        currentValue.Value = "//" + accumulator.ToString();
+                                        rObj.Add(currentValue);
+                                    }
+
+                                    //reset
+                                    accumulator.Length = 0;
+                                    currentTypeOf = ralynValue.TypeOf.Undetermined;
+                                    currentValue = new ralynValue();
+                                    isComment = false;
+                                }
+                                break;
+
+                            case ralynValue.TypeOf.ControlCharacter:
+                                //ignore for now
+
+                                //reset
+                                accumulator.Length = 0;
+                                currentTypeOf = ralynValue.TypeOf.Undetermined;
+                                currentValue = new ralynValue();
+                                break;
+                            default:
+                                break;
                         }
 
 
                     }
                 }
             }
-            return tokens;
+
+
+
+            return rObj;
         }
         #endregion Lexical Analysis
 
-        //TODO: Everything below this point is work in progress
-
         #region Parsing
-        static void Parse(List<Token> tokens)
+        static void Parse(List<ralynValue> objs)
         {
-            //create Abstract Syntax Tree
-            var ast = new Tree();
-            var currentNode = ast.root;
-            var tokenStack = new Stack<Token>();//make a guess at the capacity?  some fraction of tokens.Count perhaps?
-            var parenStack = new Stack<string>();
-
-            foreach (var t in tokens)
-            {
-                //ignore the following token types
-                if (t.Type == Token.TokenType.Comment
-                    || t.Type == Token.TokenType.DEBUG
-                    || t.Type == Token.TokenType.DOC
-                    || t.Type == Token.TokenType.TODO
-                    || t.Type == Token.TokenType.NOTE
-                    || t.Type == Token.TokenType.WhiteSpace
-                    ) continue;
-
-                if(t.Type == Token.TokenType.Identifier_Fn)
-                {                    
-                    currentNode = currentNode.Add(t);
-                    continue;
-                }
-
-                if(t.Type == Token.TokenType.Group_Delimiter)
-                {
-                    if ( parenStack.Count > 0 
-                        && (t.Value == ")" && parenStack.Peek() == "(")
-                        || (t.Value == "}" && parenStack.Peek() == "{")
-                        || (t.Value == "]" && parenStack.Peek() == "["))
-                    {
-                        parenStack.Pop();
-                    }else
-                    {
-                        parenStack.Push(t.Value);
-                    }
-                }
-
-                if(t.Type == Token.TokenType.Operator)
-                {
-                    //orders of operation
-                }
-
-
-            }
 
         }
         #endregion Parsing
-
-        //TODO: Everything below this point is non-exsistant or simple stubs
-
-        #region Abstract Syntax Tree -> Action Tree
-        static void CreateActionTree()
-        {
-            //create Abstract Syntax Tree
-            throw new NotImplementedException();
-        }
-        #endregion Abstract Syntax Tree -> Action Tree
-
-        #region Transpiling
-        static string Transpile()
-        {
-            //output machine code in another language... JavaScript?
-            var jsCode = new System.Text.StringBuilder();
-
-            throw new NotImplementedException();
-
-            return jsCode.ToString();
-        }
-        #endregion Transpiling
-
-        #region Compiling
-        static void Compile()
-        {
-            //output machine code
-            var machineCode = new System.Text.StringBuilder();
-
-            throw new NotImplementedException();            
-        }
-        #endregion Compiling
-
-        #region Interpreting
-        static void Interpret()
-        {
-            //run program on the fly
-            throw new NotImplementedException();
-        }
-        #endregion Interpreting
     }
 }
+
+
+
