@@ -1,13 +1,20 @@
-﻿//<t>{comment
+﻿<doc> : {
+	<type>"ralyn"
+	<namespace>{
+		<url>"variableman.com/ralyn"
+		<alias>"r"
+	}
+}
+
+//<t>{comment
 with crazy stuff in it}
 
-<rem>	"LIST"
+<r|rem>	"LIST"
 <list>{
 	<string>$("list item 1")
 	<string>$("list item 2")
 	<list>{
-		<bool>true
-		<bool>false
+		<bool>true <bool>false
 	}
 }
 
@@ -19,3 +26,6 @@ with crazy stuff in it}
 <bool>:false
 <mult-string> $("this string is
 multiple lines")
+
+//{empty list}
+<el>:{}

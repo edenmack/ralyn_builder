@@ -7,47 +7,49 @@ using System.Text.RegularExpressions;
 
 namespace ralyn_builder
 {
-    class ralynTag
+    class ralyn
     {
-        public string nameSpace;
-        public string name;
-
-        public ralynTag()
+        public class ralynTag
         {
-            this.nameSpace = "";
-            this.name = "";
-        }
-        public ralynTag(string tagText)
-        {
-            tagText = tagText.Trim();
-            tagText = tagText.Trim(new char[] { '<', '>' });
+            public string nameSpace;
+            public string name;
 
-            var parts = tagText.Split(new char[] { '|' },StringSplitOptions.RemoveEmptyEntries);
-            if(parts.Length == 2)
-            {
-                this.nameSpace = parts[0];
-                this.name = parts[1];
-            }else if(parts.Length == 1)
-            {
-                this.nameSpace = "";
-                this.name = parts[0];
-            }else
+            public ralynTag()
             {
                 this.nameSpace = "";
                 this.name = "";
             }
-        }
+            public ralynTag(string tagText)
+            {
+                tagText = tagText.Trim();
+                tagText = tagText.Trim(new char[] { '<', '>' });
 
-        public override string ToString()
-        {
-            if(this.nameSpace != "")
-                return "<" + this.nameSpace + "|" + this.name + ">";
-            else
-                return "<" + this.name + ">";
+                var parts = tagText.Split(new char[] { '|' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 2)
+                {
+                    this.nameSpace = parts[0];
+                    this.name = parts[1];
+                }
+                else if (parts.Length == 1)
+                {
+                    this.nameSpace = "";
+                    this.name = parts[0];
+                }
+                else
+                {
+                    this.nameSpace = "";
+                    this.name = "";
+                }
+            }
+
+            public override string ToString()
+            {
+                if (this.nameSpace != "")
+                    return "<" + this.nameSpace + "|" + this.name + ">";
+                else
+                    return "<" + this.name + ">";
+            }
         }
-    }
-    class ralynValue
-    {
         public enum TypeOf
         {
             Undetermined,
@@ -62,18 +64,20 @@ namespace ralyn_builder
             Comment
         }
 
-        private ralynValue.TypeOf type;
+        #region private members
+        private ralyn.TypeOf type;
         private ralynTag tag;
-        private List<ralynValue> children;
+        private List<ralyn> children;
         private string sValue;
         private double nValue;      
         private string representation;
         private string error;
         private int lineNumber;
         private int charNumber;
+        #endregion private members
 
         #region GET/SET
-        public ralynValue.TypeOf Type
+        public ralyn.TypeOf Type
         { get { return this.type; } }
         public ralynTag Tag
         {
@@ -97,7 +101,7 @@ namespace ralyn_builder
                     case TypeOf.String:
                         return this.sValue as string;
                     case TypeOf.rList:
-                        return this.children as List<ralynValue>;
+                        return this.children as List<ralyn>;
                     case TypeOf.Comment:
                         return this.representation as string;
                     default:
@@ -121,13 +125,52 @@ namespace ralyn_builder
                             this.children = null;
                             break;
                         case TypeOf.String:
+                            /// <summary>
+                            /// ralyn strings come in several varieties:
+                            ///   1. "string" -- double quoted
+                            ///   2. 'string' -- single quoted
+                            ///   3. <string> -- angle quoted for identifiers
+                            ///   4. $("string") -- special string where " can be replaced by any character
+                            /// </summary>
+                            
                             this.nValue = double.NaN;
                             this.children = null;
 
-                            var sTest = ralynValue.stringTest(this.representation);
-                            if (sTest.Key)
+                            var stringValue = "";
+                            var isString = false;
+
+                            var s = this.representation.TrimStart(new char[] { ' ', ':', '\t' }).Trim().ToUpper();
+
+                            if (s.Length >= 5 && s[0] == '$' && s[1] == '(')
                             {
-                                this.sValue = sTest.Value;
+                                var quote = s[2].ToString();
+                                if (s.IndexOf(quote + ")") == s.Length - 2)
+                                {
+                                    isString = true;
+                                    stringValue = s.Substring(3, s.Length - 5);
+                                }
+                            }
+                            if (s.Length >= 2 && s[0] == '"')
+                            {
+                                var s1 = s.Replace("\\\"", ""); //ignore escaped double quotes
+                                isString = (s1.IndexOf("\"", 1) == s1.Length - 1);
+                                stringValue = s.Substring(1, s.Length - 2);
+                            }
+                            if (s.Length >= 2 && s[0] == '\'')
+                            {
+                                var s1 = s.Replace("\\'", ""); //ignore escaped single quotes
+                                isString = (s1.IndexOf("'", 1) == s1.Length - 1);
+                                stringValue = s.Substring(1, s.Length - 2);
+                            }
+                            if (s.Length >= 2 && s[0] == '<')
+                            {
+                                isString = (s.IndexOf(">") == s.Length - 1);
+                                stringValue = s.Substring(1, s.Length - 2);
+                            }
+
+                            if (isString)
+                            {
+                                this.sValue = stringValue;
                             }
                             else
                             {
@@ -140,7 +183,18 @@ namespace ralyn_builder
                             this.sValue = "";
                             this.children = null;
 
-                            this.nValue = ralynValue.parseNumber(this.representation);
+                            double v;
+                            try
+                            {
+                                v = double.Parse(this.representation, System.Globalization.NumberStyles.Float);
+                            }
+                            catch (Exception numEx)
+                            {
+                                v = double.NaN;
+                                //Console.WriteLine("ERROR: "+num+" -> " + numEx.Message);
+                            }
+
+                            this.nValue = v;
                             break;
                         case TypeOf.Tag:
                             //this really isn't the best way to assign a tag value
@@ -157,7 +211,7 @@ namespace ralyn_builder
                             break;
                         case TypeOf.rList:
                             //this doesn't work
-                            this.children = value as List<ralynValue>;
+                            this.children = value as List<ralyn>;
                             break;
                         default:
                             //shouldn't be able to get here
@@ -169,7 +223,7 @@ namespace ralyn_builder
                 }catch(Exception valueEx) { this.error = valueEx.Message;this.type = TypeOf.Undetermined; }                        
             }
         }
-        public List<ralynValue> Children
+        public List<ralyn> Children
         {
             get { return this.children; }
             set
@@ -191,9 +245,9 @@ namespace ralyn_builder
         #endregion GET/SET
 
         #region Constructors
-        public ralynValue()
+        public ralyn()
         {
-            this.type = ralynValue.TypeOf.Null;
+            this.type = ralyn.TypeOf.Null;
             this.tag = new ralynTag();
             this.sValue = "";
             this.nValue = double.NaN;
@@ -202,7 +256,7 @@ namespace ralyn_builder
             this.lineNumber = -1;
             this.charNumber = -1;
         }
-        public ralynValue(object value)
+        public ralyn(object value)
         {
             this.lineNumber = -1;
             this.charNumber = -1;
@@ -210,7 +264,7 @@ namespace ralyn_builder
         }
         #endregion Constuctors
 
-        public static ralynValue.TypeOf looksLike(string s)
+        public static ralyn.TypeOf looksLike(string s)
         {
             s = s.TrimStart(new char[] { ' ', ':', '\t' }).Trim().ToUpper();
             if(s.Length == 0)
@@ -282,71 +336,7 @@ namespace ralyn_builder
 
         }
 
-        #region Number stuff
-        public static double parseNumber(string num)
-        {
-            //var re = new System.Text.RegularExpressions.Regex(@"^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$");
-            //var isNum = re.Match(num).Success;
-            double v;
-            try
-            {
-                v = double.Parse(num, System.Globalization.NumberStyles.Float);
-            }
-            catch (Exception numEx)
-            {
-                v = double.NaN;
-                //Console.WriteLine("ERROR: "+num+" -> " + numEx.Message);
-            }
-            return v;
-        }
-        #endregion Number stuff
-
-        #region String stuff
-        /// <summary>
-        /// ralyn strings come in several varieties:
-        ///   1. "string" -- double quoted
-        ///   2. 'string' -- single quoted
-        ///   3. <string> -- angle quoted for identifiers
-        ///   4. $("string") -- special string where " can be replaced by any character
-        /// </summary>
-        public static KeyValuePair<bool,string> stringTest(string s)
-        {
-            var stringValue = "";
-            var isString = false;
-
-            s = s.TrimStart(new char[] { ' ', ':', '\t' }).Trim().ToUpper();
-
-            if (s.Length >= 5 && s[0] == '$' && s[1] == '(')
-            {
-                var quote = s[2].ToString();
-                if (s.IndexOf(quote + ")") == s.Length - 2)
-                {
-                    isString = true;
-                    stringValue = s.Substring(3, s.Length - 5);
-                }
-            }
-            if (s.Length >= 2 && s[0] == '"')
-            {
-                var s1 = s.Replace("\\\"", ""); //ignore escaped double quotes
-                isString = (s1.IndexOf("\"",1) == s1.Length - 1);
-                stringValue = s.Substring(1, s.Length - 2);
-            }
-            if (s.Length >= 2 && s[0] == '\'')
-            {
-                var s1 = s.Replace("\\'", ""); //ignore escaped single quotes
-                isString = (s1.IndexOf("'",1) == s1.Length - 1);
-                stringValue = s.Substring(1, s.Length - 2);
-            }
-            if (s.Length >= 2 && s[0] == '<')
-            {
-                isString = (s.IndexOf(">") == s.Length - 1);
-                stringValue = s.Substring(1, s.Length - 2);
-            }
-
-            return new KeyValuePair<bool, string>(isString, stringValue);
-        }
-        #endregion String stuff
-
+        #region String output... JSON/XML transformations
         public override string ToString()
         {
             return this.ToString(0);
@@ -365,7 +355,7 @@ namespace ralyn_builder
                     case TypeOf.False:
                         return this.tag + " : " + "false";// + " -> bool";
                     case TypeOf.String:
-                        return this.tag + " : " + this.sValue;// + " -> String";
+                        return this.tag + " : " + this.representation;// + " -> String";
                     case TypeOf.Number:
                         return this.tag + " : " + this.nValue.ToString();// + " -> Number";
                     case TypeOf.Comment:
@@ -374,7 +364,7 @@ namespace ralyn_builder
                         var ret = new System.Text.StringBuilder();
                         ret.AppendLine(this.tag + " : {");
                         ++indent;
-                        foreach (ralynValue r in this.children)
+                        foreach (ralyn r in this.children)
                         {
                             ret.AppendLine(new String('\t', indent) + r.ToString(indent));
                         }
@@ -386,10 +376,101 @@ namespace ralyn_builder
                 }
             }catch(Exception outputEx)
             {                
-                return "<ralyn|Exception> : { <line> : " + this.lineNumber.ToString() + " <char> : " + this.charNumber.ToString() + " <message> : $(' " + outputEx.Message + "')";
+                return "<ralyn|Exception> : { <line> : " + this.lineNumber.ToString() + " <char> : " + this.charNumber.ToString() + " <message> : $(' " + outputEx.Message + "')}";
             }
         }
+        
+        public string ToJSON(int indent = 0)
+        {
+            try
+            {
+                //single value
+                switch (this.type)
+                {
+                    case TypeOf.Null:
+                        return "\"" + (string.IsNullOrEmpty(this.tag.nameSpace)?"": this.tag.nameSpace + "|") + this.tag.name + "\" : " + "null,";// + " -> NULL";
+                    case TypeOf.True:
+                        return "\"" + (string.IsNullOrEmpty(this.tag.nameSpace) ? "" : this.tag.nameSpace + "|") + this.tag.name + "\" : " + "true,";// + " -> bool";
+                    case TypeOf.False:
+                        return "\"" + (string.IsNullOrEmpty(this.tag.nameSpace) ? "" : this.tag.nameSpace + "|") + this.tag.name + "\" : " + "false,";// + " -> bool";
+                    case TypeOf.String:
+                        return "\"" + (string.IsNullOrEmpty(this.tag.nameSpace) ? "" : this.tag.nameSpace + "|") + this.tag.name + "\" : \"" + this.sValue + "\",";// + " -> String";
+                    case TypeOf.Number:
+                        return "\"" + (string.IsNullOrEmpty(this.tag.nameSpace) ? "" : this.tag.nameSpace + "|") + this.tag.name + "\" : " + this.nValue.ToString() + ",";// + " -> Number";
+                    case TypeOf.Comment:
+                        return "/*" + "\"" + (string.IsNullOrEmpty(this.tag.nameSpace) ? "" : this.tag.nameSpace + "|") + this.tag.name + "\" : " + this.representation + "*/";// + " -> Comment";
+                    case TypeOf.rList:
+                        var ret = new System.Text.StringBuilder();
+                        ret.AppendLine("\"" + (string.IsNullOrEmpty(this.tag.nameSpace) ? "" : this.tag.nameSpace + "|") + this.tag.name + "\" : {");
+                        ++indent;
+                        foreach (ralyn r in this.children)
+                        {
+                            ret.AppendLine(new String('\t', indent) + r.ToJSON(indent));
+                        }
+                        --indent;
+                        ret.AppendLine(new String('\t', indent) + "}");
+                        return ret.ToString();
+                    default:
+                        return "";
+                }
+            }
+            catch (Exception outputEx)
+            {
+                return "//\"Exception\" : { \"line\" : " + this.lineNumber.ToString() + ", \"char\" : " + this.charNumber.ToString() + ", \"message\" : \" " + outputEx.Message + "\",}";
+            }
+        }
+        public string ToXML(int indent = 0)
+        {
+            try
+            {
+                var tagname = (string.IsNullOrEmpty(this.tag.nameSpace) ? "" : this.tag.nameSpace + ":") + this.tag.name;
+
+                //single value
+                switch (this.type)
+                {
+                    case TypeOf.Null:
+                        return "<" + tagname + ">" + "null" + "</" + tagname + ">";// + " -> NULL";
+                    case TypeOf.True:
+                        return "<" + tagname + ">"  + "true" + "</" + tagname + ">";// + " -> bool";
+                    case TypeOf.False:
+                        return "<" + tagname + this.tag.name + ">"  + "false" + "</" + tagname + ">";// + " -> bool";
+                    case TypeOf.String:
+                        return "<" + tagname + ">"  + this.sValue + "</" + tagname + ">";// + "-> String";
+                    case TypeOf.Number:
+                        return "<" + tagname + ">"  + this.nValue.ToString() + "</" + tagname + ">";// + " -> Number";
+                    case TypeOf.Comment:
+                        return "<!--  <" + tagname + ">" + this.representation + "</" + tagname + ">  -->";// + " -> Comment";
+                    case TypeOf.rList:
+                        var ret = new System.Text.StringBuilder();
+                        ret.AppendLine("<" + tagname + ">");
+                        ++indent;
+                        foreach (ralyn r in this.children)
+                        {
+                            ret.AppendLine(new String('\t', indent) + r.ToXML(indent));
+                        }
+                        --indent;
+                        ret.AppendLine(new String('\t', indent) + "</" + tagname + ">");
+                        return ret.ToString();
+                    default:
+                        return "";
+                }
+            }
+            catch (Exception outputEx)
+            {
+                return "<!-- <Exception><line>" + this.lineNumber.ToString() + "</line><char>" + this.charNumber.ToString() + "</char><message>" + outputEx.Message + "</message></Exception> -->";
+            }
+        }
+
+        public static List<ralyn> JSONtoRalyn(string json)
+        {
+            throw new NotImplementedException("parsing JSON directly into ralyn is slated for future development but has not yet been implemented");
+
+            //var r = new List<ralyn>();
+            //return r;
+        }
+        #endregion String output... JSON/XML transformations
     }
+
 
     class Program
     {
@@ -434,10 +515,8 @@ namespace ralyn_builder
                         break;
                     case '2':
                         Console.WriteLine();
-                        var testValue = "eden";
-                        var test = ralynValue.parseNumber(testValue);
-                        //Console.WriteLine("no ad hoc test configured");
-                        Console.WriteLine($"{testValue}->{test}");
+
+                        Console.WriteLine("no test currently configured");
 
                         Console.WriteLine("press any key to continue...");
                         Console.ReadKey();
@@ -486,10 +565,10 @@ namespace ralyn_builder
 
         //Builder
         #region Lexical Analysis        
-        static List<ralynValue> Lex(string code)
+        static List<ralyn> Lex(string code)
         {
             //setup vars
-            var rObj = new List<ralynValue>();
+            var rObj = new List<ralyn>();
             string line;
             using (var _code = new System.IO.StringReader(code))
             {
@@ -497,8 +576,8 @@ namespace ralyn_builder
                 var accumulator = new StringBuilder();
                 var stringBeginSequence = "";
                 var stringEndSequence = "";
-                var currentTypeOf = ralynValue.TypeOf.Undetermined;
-                var currentValue = new ralynValue();
+                var currentTypeOf = ralyn.TypeOf.Undetermined;
+                var currentValue = new ralyn();
 
                 var nestLevel = 0;
                 var isComment = false;
@@ -519,60 +598,64 @@ namespace ralyn_builder
                     {
                         ++currentValue.CharNumber;
 
+                        if (currentTypeOf == ralyn.TypeOf.Undetermined && (
+                            c == ':' ||
+                            c == ' ' )) continue;
+
                         accumulator.Append(c);                       
 
                         //Console.WriteLine(lineNum.ToString() + ":" + charNum.ToString() + "  " + accumulator.ToString() + "->" + currentTypeOf.ToString());
 
-                        if (currentTypeOf == ralynValue.TypeOf.Undetermined)
+                        if (currentTypeOf == ralyn.TypeOf.Undetermined)
                         {
-                            currentTypeOf = ralynValue.looksLike(accumulator.ToString());
+                            currentTypeOf = ralyn.looksLike(accumulator.ToString());
                         }                           
-                        if (currentTypeOf == ralynValue.TypeOf.Undetermined) continue;
+                        if (currentTypeOf == ralyn.TypeOf.Undetermined) continue;
 
                         //OK, we think we know what we are dealing with
                         switch (currentTypeOf)
                         {
                             #region simple value lexing
-                            case ralynValue.TypeOf.Null:
+                            case ralyn.TypeOf.Null:
                                 currentValue.Value = "null";
                                 rObj.Add(currentValue);
 
                                 //reset
                                 accumulator.Length = 0;
-                                currentTypeOf = ralynValue.TypeOf.Undetermined;
-                                currentValue = new ralynValue();
+                                currentTypeOf = ralyn.TypeOf.Undetermined;
+                                currentValue = new ralyn();
                                 break;
-                            case ralynValue.TypeOf.True:
+                            case ralyn.TypeOf.True:
                                 currentValue.Value = "true";
                                 rObj.Add(currentValue);
 
                                 //reset
                                 accumulator.Length = 0;
-                                currentTypeOf = ralynValue.TypeOf.Undetermined;
-                                currentValue = new ralynValue();
+                                currentTypeOf = ralyn.TypeOf.Undetermined;
+                                currentValue = new ralyn();
                                 break;
-                            case ralynValue.TypeOf.False:
+                            case ralyn.TypeOf.False:
                                 currentValue.Value = "false";
                                 rObj.Add(currentValue);
 
                                 //reset
                                 accumulator.Length = 0;
-                                currentTypeOf = ralynValue.TypeOf.Undetermined;
-                                currentValue = new ralynValue();
+                                currentTypeOf = ralyn.TypeOf.Undetermined;
+                                currentValue = new ralyn();
                                 break;
-                            case ralynValue.TypeOf.Tag:
+                            case ralyn.TypeOf.Tag:
                                 //end condition is >:
                                 if (c == '>')
                                 {
-                                    currentValue.Tag = new ralynTag(accumulator.ToString());
+                                    currentValue.Tag = new ralyn.ralynTag(accumulator.ToString());
 
                                     //reset -- sort of
                                     accumulator.Length = 0;
-                                    currentTypeOf = ralynValue.TypeOf.Undetermined;
+                                    currentTypeOf = ralyn.TypeOf.Undetermined;
                                     //currentValue = new ralynValue(); //DON'T REST THE ENTIRE VALUE!
                                 }
                                 break;
-                            case ralynValue.TypeOf.Number:
+                            case ralyn.TypeOf.Number:
                                 #region Number lexing
                                 //keep accumulating until encouter , or ; 
                                 if (c == ',' || c == ';' || c == ' ' || currentValue.CharNumber == line.Length-1)
@@ -593,12 +676,12 @@ namespace ralyn_builder
 
                                     //reset
                                     accumulator.Length = 0;
-                                    currentTypeOf = ralynValue.TypeOf.Undetermined;
-                                    currentValue = new ralynValue();
+                                    currentTypeOf = ralyn.TypeOf.Undetermined;
+                                    currentValue = new ralyn();
                                 }
                                 #endregion Number lexing                        
                                 break;
-                            case ralynValue.TypeOf.String:
+                            case ralyn.TypeOf.String:
                                 #region String lexing
                                 #region String boundary conditions
 
@@ -641,8 +724,8 @@ namespace ralyn_builder
 
                                     //reset
                                     accumulator.Length = 0;
-                                    currentTypeOf = ralynValue.TypeOf.Undetermined;
-                                    currentValue = new ralynValue();
+                                    currentTypeOf = ralyn.TypeOf.Undetermined;
+                                    currentValue = new ralyn();
                                     stringBeginSequence = "";
                                     stringEndSequence = "";
                                 }
@@ -650,13 +733,13 @@ namespace ralyn_builder
                                 break;
                             #endregion simple value lexing
 
-                            case ralynValue.TypeOf.Comment:
+                            case ralyn.TypeOf.Comment:
                                 isComment = true;
                                 accumulator.Length = 0;
-                                currentTypeOf = ralynValue.TypeOf.Undetermined;
+                                currentTypeOf = ralyn.TypeOf.Undetermined;
                                 break;
 
-                            case ralynValue.TypeOf.rList:
+                            case ralyn.TypeOf.rList:
                                 if(c == '{')
                                 {
                                     ++nestLevel;
@@ -681,19 +764,19 @@ namespace ralyn_builder
 
                                     //reset
                                     accumulator.Length = 0;
-                                    currentTypeOf = ralynValue.TypeOf.Undetermined;
-                                    currentValue = new ralynValue();
+                                    currentTypeOf = ralyn.TypeOf.Undetermined;
+                                    currentValue = new ralyn();
                                     isComment = false;
                                 }
                                 break;
 
-                            case ralynValue.TypeOf.ControlCharacter:
+                            case ralyn.TypeOf.ControlCharacter:
                                 //ignore for now
 
                                 //reset
                                 accumulator.Length = 0;
-                                currentTypeOf = ralynValue.TypeOf.Undetermined;
-                                currentValue = new ralynValue();
+                                currentTypeOf = ralyn.TypeOf.Undetermined;
+                                currentValue = new ralyn();
                                 break;
                             default:
                                 break;
@@ -711,7 +794,7 @@ namespace ralyn_builder
         #endregion Lexical Analysis
 
         #region Parsing
-        static void Parse(List<ralynValue> objs)
+        static void Parse(List<ralyn> objs)
         {
 
         }
