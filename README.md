@@ -10,7 +10,7 @@ sacrificing ability.
 * tag system for naming data elements or providing context
 
 ### Example
-<doc> : {<type>:"ralyn"}
+&lt;doc&gt; : {&lt;type&gt;:"ralyn"}
 
 //{
  This is a ralyn data
@@ -22,22 +22,22 @@ sacrificing ability.
   used to separate values.
 }
 
-<strings> : {
-  <s1> : "Strings can be simple double quoted"
-  <s2> : 'or simple single quoted'
-  <s3> : $("or specify the delimiters as
+&lt;strings&gt; : {
+  &lt;s1&gt; : "Strings can be simple double quoted"
+  &lt;s2&gt; : 'or simple single quoted'
+  &lt;s3&gt; : $("or specify the delimiters as
   the first character after '$('")
 }
-<numbers> : {
-  <n1> : -12.3e-5
+&lt;numbers&gt; : {
+  &lt;n1&gt; : -12.3e-5
 }
-<bool> : {
-  <b1> : true
-  <b2> : false
-  <b3> : null
+&lt;bool&gt; : {
+  &lt;b1&gt; : true
+  &lt;b2&gt; : false
+  &lt;b3&gt; : null
 }
-<list>:{
-  <nested>:{
+&lt;list&gt;:{
+  &lt;nested&gt;:{
     //{as deep as you want!}
   }
 }
