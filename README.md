@@ -17,27 +17,27 @@ sacrificing ability.
  description program.
 
   Colons between tag and
-  data value are optional,
+  data value are optional,<br>
   as are commas/semicolons
   used to separate values.
 }
 
-&lt;strings&gt; : {
-  &lt;s1&gt; : "Strings can be simple double quoted"
-  &lt;s2&gt; : 'or simple single quoted'
-  &lt;s3&gt; : $("or specify the delimiters as
-  the first character after '$('")
-}
-&lt;numbers&gt; : {
-  &lt;n1&gt; : -12.3e-5
-}
-&lt;bool&gt; : {
-  &lt;b1&gt; : true
-  &lt;b2&gt; : false
-  &lt;b3&gt; : null
-}
-&lt;list&gt;:{
-  &lt;nested&gt;:{
-    //{as deep as you want!}
-  }
-}
+&lt;strings&gt; : {<br>
+  &lt;s1&gt; : "Strings can be simple double quoted"<br>
+  &lt;s2&gt; : 'or simple single quoted'<br>
+  &lt;s3&gt; : $("or specify the delimiters as<br>
+  the first character after '$('")<br>
+}<br>
+&lt;numbers&gt; : {<br>
+  &lt;n1&gt; : -12.3e-5<br>
+}<br>
+&lt;bool&gt; : {<br>
+  &lt;b1&gt; : true<br>
+  &lt;b2&gt; : false<br>
+  &lt;b3&gt; : null<br>
+}<br>
+&lt;list&gt;:{<br>
+  &lt;nested&gt;:{<br>
+    //{as deep as you want!}<br>
+  }<br>
+}<br>
