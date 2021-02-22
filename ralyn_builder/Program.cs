@@ -61,6 +61,7 @@ namespace ralyn_builder
             rList,
             ControlCharacter,
             Tag,
+            Root,
             Comment
         }
 
@@ -139,7 +140,7 @@ namespace ralyn_builder
                             var stringValue = "";
                             var isString = false;
 
-                            var s = this.representation.TrimStart(new char[] { ' ', ':', '\t' }).Trim().ToUpper();
+                            var s = this.representation.TrimStart(new char[] { ' ', ':', '\t' }).Trim();
 
                             if (s.Length >= 5 && s[0] == '$' && s[1] == '(')
                             {
@@ -190,8 +191,9 @@ namespace ralyn_builder
                             }
                             catch (Exception numEx)
                             {
-                                v = double.NaN;
+                                v = double.NaN;                                
                                 //Console.WriteLine("ERROR: "+num+" -> " + numEx.Message);
+                                var ignoreWarning = numEx;
                             }
 
                             this.nValue = v;
@@ -256,316 +258,21 @@ namespace ralyn_builder
             this.lineNumber = -1;
             this.charNumber = -1;
         }
-        public ralyn(object value)
-        {
+        public ralyn(string ralynString)
+        {            
+            this.type = ralyn.TypeOf.Root;
+            this.tag = new ralynTag();
+            this.sValue = "";
+            this.nValue = double.NaN;
+            this.children = ralyn.Lex(ralynString);
+            this.representation = "null";
             this.lineNumber = -1;
             this.charNumber = -1;
-            Value = value;
         }
         #endregion Constuctors
 
-        public static ralyn.TypeOf looksLike(string s)
-        {
-            s = s.TrimStart(new char[] { ' ', ':', '\t' }).Trim().ToUpper();
-            if(s.Length == 0)
-            {
-                return TypeOf.Undetermined;
-            }
-            else if(s.Length >= 2 && 
-                s[0] == '/' && 
-                s[1] == '/')
-            {
-                return TypeOf.Comment;
-            }
-            else if (s == "NULL")
-            {
-                return TypeOf.Null;
-            }
-            else if (s == "TRUE")
-            {
-                return TypeOf.True;
-            }
-            else if (s == "FALSE")
-            {
-                return TypeOf.False;
-            }
-            else if (s.Length > 0 && (
-               s[0] == '"' ||
-               s[0] == '\'' ||               
-               s[0] == '$'))
-            {
-                return TypeOf.String;
-            }else if(s.Length > 0 && 
-                s[0] == '<')
-            {
-                return TypeOf.Tag;
-            }
-            else if (s.Length > 0 &&
-                s[0] == '{')
-            {
-                return TypeOf.rList;
-            }
-            else if (s.Length > 0 && (
-                s[0] == '1' ||
-                s[0] == '2' ||
-                s[0] == '3' ||
-                s[0] == '4' ||
-                s[0] == '5' ||
-                s[0] == '6' ||
-                s[0] == '7' ||
-                s[0] == '8' ||
-                s[0] == '9' ||
-                s[0] == '0' ||
-                s[0] == '-' ||
-                s[0] == '+' ||
-                s[0] == '.'))
-            {
-                return TypeOf.Number;
-            }
-            else if (s.Length > 0 && (
-               s[0] == ':' ||
-               s[0] == ';' ||
-               s[0] == ','))
-            {
-                return TypeOf.ControlCharacter;
-            }
-            else
-            {
-                return TypeOf.Undetermined;
-            }
-
-        }
-
-        #region String output... JSON/XML transformations
-        public override string ToString()
-        {
-            return this.ToString(0);
-        }
-        public string ToString(int indent)
-        {
-            try
-            {                
-                //single value
-                switch(this.type)
-                {
-                    case TypeOf.Null:
-                        return this.tag + " : " + "Null";// + " -> NULL";
-                    case TypeOf.True:
-                        return this.tag + " : " + "true";// + " -> bool";
-                    case TypeOf.False:
-                        return this.tag + " : " + "false";// + " -> bool";
-                    case TypeOf.String:
-                        return this.tag + " : " + this.representation;// + " -> String";
-                    case TypeOf.Number:
-                        return this.tag + " : " + this.nValue.ToString();// + " -> Number";
-                    case TypeOf.Comment:
-                        return "//" + this.tag + " : " + this.representation;// + " -> Comment";
-                    case TypeOf.rList:
-                        var ret = new System.Text.StringBuilder();
-                        ret.AppendLine(this.tag + " : {");
-                        ++indent;
-                        foreach (ralyn r in this.children)
-                        {
-                            ret.AppendLine(new String('\t', indent) + r.ToString(indent));
-                        }
-                        --indent;
-                        ret.AppendLine(new String('\t', indent) + "}");
-                        return ret.ToString();
-                    default:
-                        return "";
-                }
-            }catch(Exception outputEx)
-            {                
-                return "<ralyn|Exception> : { <line> : " + this.lineNumber.ToString() + " <char> : " + this.charNumber.ToString() + " <message> : $(' " + outputEx.Message + "')}";
-            }
-        }
-        
-        public string ToJSON(int indent = 0)
-        {
-            try
-            {
-                //single value
-                switch (this.type)
-                {
-                    case TypeOf.Null:
-                        return "\"" + (string.IsNullOrEmpty(this.tag.nameSpace)?"": this.tag.nameSpace + "|") + this.tag.name + "\" : " + "null,";// + " -> NULL";
-                    case TypeOf.True:
-                        return "\"" + (string.IsNullOrEmpty(this.tag.nameSpace) ? "" : this.tag.nameSpace + "|") + this.tag.name + "\" : " + "true,";// + " -> bool";
-                    case TypeOf.False:
-                        return "\"" + (string.IsNullOrEmpty(this.tag.nameSpace) ? "" : this.tag.nameSpace + "|") + this.tag.name + "\" : " + "false,";// + " -> bool";
-                    case TypeOf.String:
-                        return "\"" + (string.IsNullOrEmpty(this.tag.nameSpace) ? "" : this.tag.nameSpace + "|") + this.tag.name + "\" : \"" + this.sValue + "\",";// + " -> String";
-                    case TypeOf.Number:
-                        return "\"" + (string.IsNullOrEmpty(this.tag.nameSpace) ? "" : this.tag.nameSpace + "|") + this.tag.name + "\" : " + this.nValue.ToString() + ",";// + " -> Number";
-                    case TypeOf.Comment:
-                        return "/*" + "\"" + (string.IsNullOrEmpty(this.tag.nameSpace) ? "" : this.tag.nameSpace + "|") + this.tag.name + "\" : " + this.representation + "*/";// + " -> Comment";
-                    case TypeOf.rList:
-                        var ret = new System.Text.StringBuilder();
-                        ret.AppendLine("\"" + (string.IsNullOrEmpty(this.tag.nameSpace) ? "" : this.tag.nameSpace + "|") + this.tag.name + "\" : {");
-                        ++indent;
-                        foreach (ralyn r in this.children)
-                        {
-                            ret.AppendLine(new String('\t', indent) + r.ToJSON(indent));
-                        }
-                        --indent;
-                        ret.AppendLine(new String('\t', indent) + "}");
-                        return ret.ToString();
-                    default:
-                        return "";
-                }
-            }
-            catch (Exception outputEx)
-            {
-                return "//\"Exception\" : { \"line\" : " + this.lineNumber.ToString() + ", \"char\" : " + this.charNumber.ToString() + ", \"message\" : \" " + outputEx.Message + "\",}";
-            }
-        }
-        public string ToXML(int indent = 0)
-        {
-            try
-            {
-                var tagname = (string.IsNullOrEmpty(this.tag.nameSpace) ? "" : this.tag.nameSpace + ":") + this.tag.name;
-
-                //single value
-                switch (this.type)
-                {
-                    case TypeOf.Null:
-                        return "<" + tagname + ">" + "null" + "</" + tagname + ">";// + " -> NULL";
-                    case TypeOf.True:
-                        return "<" + tagname + ">"  + "true" + "</" + tagname + ">";// + " -> bool";
-                    case TypeOf.False:
-                        return "<" + tagname + this.tag.name + ">"  + "false" + "</" + tagname + ">";// + " -> bool";
-                    case TypeOf.String:
-                        return "<" + tagname + ">"  + this.sValue + "</" + tagname + ">";// + "-> String";
-                    case TypeOf.Number:
-                        return "<" + tagname + ">"  + this.nValue.ToString() + "</" + tagname + ">";// + " -> Number";
-                    case TypeOf.Comment:
-                        return "<!--  <" + tagname + ">" + this.representation + "</" + tagname + ">  -->";// + " -> Comment";
-                    case TypeOf.rList:
-                        var ret = new System.Text.StringBuilder();
-                        ret.AppendLine("<" + tagname + ">");
-                        ++indent;
-                        foreach (ralyn r in this.children)
-                        {
-                            ret.AppendLine(new String('\t', indent) + r.ToXML(indent));
-                        }
-                        --indent;
-                        ret.AppendLine(new String('\t', indent) + "</" + tagname + ">");
-                        return ret.ToString();
-                    default:
-                        return "";
-                }
-            }
-            catch (Exception outputEx)
-            {
-                return "<!-- <Exception><line>" + this.lineNumber.ToString() + "</line><char>" + this.charNumber.ToString() + "</char><message>" + outputEx.Message + "</message></Exception> -->";
-            }
-        }
-
-        public static List<ralyn> JSONtoRalyn(string json)
-        {
-            throw new NotImplementedException("parsing JSON directly into ralyn is slated for future development but has not yet been implemented");
-
-            //var r = new List<ralyn>();
-            //return r;
-        }
-        #endregion String output... JSON/XML transformations
-    }
-
-
-    class Program
-    {
-        //UI
-        static void Main(string[] args)
-        {
-            var exit = false;
-            var fileName = @"..\..\TestCode.ralyn";
-
-            while (!exit)
-            {
-                Console.Clear();
-                Console.WriteLine("ralyn Builder");
-                Console.WriteLine($" 1. Select File (current file->{fileName})");
-                Console.WriteLine(" 2. ad hoc Test");
-                Console.WriteLine(" 3. Lex code");
-                //Console.WriteLine(" 4. Parser code");
-                //Console.WriteLine(" 5. Create Action Tree from code");
-                //Console.WriteLine(" 6. Transpile code");
-                //Console.WriteLine(" 7. Compile code");
-                //Console.WriteLine(" 8. Execute code");
-                Console.WriteLine(" 0. Exit");
-                var key = Console.ReadKey();
-
-                switch (key.KeyChar)
-                {
-                    case '1':
-                        Console.WriteLine();
-                        Console.WriteLine("Enter new file path");
-                        var tempFile = Console.ReadLine();
-                        var fi = new System.IO.FileInfo(tempFile);
-                        if (fi.Exists)
-                        {
-                            fileName = tempFile;
-                        }
-                        else
-                        {
-                            Console.WriteLine($"Could not locate {tempFile}, reverting to {fileName}");
-                            Console.WriteLine("press any key to continue...");
-                            Console.ReadKey();
-                        }
-                        break;
-                    case '2':
-                        Console.WriteLine();
-
-                        Console.WriteLine("no test currently configured");
-
-                        Console.WriteLine("press any key to continue...");
-                        Console.ReadKey();
-                        break;
-                    case '3':
-                        //Lex
-                        Console.WriteLine();
-                        try
-                        {
-                            var codeFromFile = System.IO.File.ReadAllText(fileName);
-                            var result = Lex(codeFromFile);
-                            foreach(var r in result)
-                            Console.WriteLine(r);
-                        }
-                        catch (Exception lexEx)
-                        {
-                            Console.WriteLine(lexEx.Message);
-                        }
-
-                        Console.WriteLine("press any key to continue...");
-                        Console.ReadKey();
-                        break;
-                    case '4':
-                        //Parse
-                        Console.WriteLine();
-                        try
-                        {
-                            var codeFromFile = System.IO.File.ReadAllText(@"..\..\TestCode.ralyn");
-                            var result = Lex(codeFromFile);
-                            Parse(result);
-                        }
-                        catch (Exception parseEx)
-                        {
-                            Console.WriteLine(parseEx.Message);
-                        }
-                        break;
-                    case '0':
-                        exit = true;
-                        break;
-                    default:
-                        break;
-                }
-            }
-        }
-
-
-        //Builder
-        #region Lexical Analysis        
-        static List<ralyn> Lex(string code)
+        #region Lexer
+        private static List<ralyn> Lex(string code)
         {
             //setup vars
             var rObj = new List<ralyn>();
@@ -578,6 +285,8 @@ namespace ralyn_builder
                 var stringEndSequence = "";
                 var currentTypeOf = ralyn.TypeOf.Undetermined;
                 var currentValue = new ralyn();
+
+                var ids = new List<string>();
 
                 var nestLevel = 0;
                 var isComment = false;
@@ -648,6 +357,28 @@ namespace ralyn_builder
                                 if (c == '>')
                                 {
                                     currentValue.Tag = new ralyn.ralynTag(accumulator.ToString());
+                                    if(currentValue.Tag.name.Contains('*')
+                                        || currentValue.Tag.name.Contains('[')
+                                        || currentValue.Tag.name.Contains(']')
+                                        || currentValue.Tag.name.Contains('.')
+                                        || currentValue.Tag.name.Contains('<')
+                                        || currentValue.Tag.name.Contains('-')
+                                        || currentValue.Tag.name.Contains('!')
+                                        || currentValue.Tag.name.Contains('@')
+                                        || currentValue.Tag.name.Contains('#')
+                                        || currentValue.Tag.name.Contains('$')
+                                        )
+                                        {
+                                            currentValue.error = $"Tag name <{currentValue.Tag.name}> contains illegal characters: ['*', '[', ']', '.', '<', '-', '!', '@', '#', '$']";
+                                        }
+
+                                    if(ids.Contains(currentValue.Tag.name))
+                                    {
+                                        //this tag name already exists at this level... trigger error
+                                        currentValue.error = $"Tag name <{currentValue.Tag.name}> appears multiple times";
+                                    }else{
+                                        ids.Add(currentValue.Tag.name);
+                                    }
 
                                     //reset -- sort of
                                     accumulator.Length = 0;
@@ -781,24 +512,541 @@ namespace ralyn_builder
                             default:
                                 break;
                         }
+                    }
+                }
+            }
 
+            //check for mixed mode
+            var mode = "";
+            foreach(var r in rObj)
+            {
+                if(r.Type == ralyn.TypeOf.Comment) continue;
+                
+                var tagCheck = false;
+                var noTagCheck = false;
 
+                if(String.IsNullOrEmpty(r.Tag.name))
+                {
+                    noTagCheck = true;
+                    if(mode == "") mode = "non-associative";
+                }else{
+                    tagCheck = true;
+                    if(mode == "") mode = "associative";
+                }
+
+                if(tagCheck && mode == "non-associative")
+                {
+                    r.error = "unexpected tag in non-associative object";                    
+                }
+                if(noTagCheck && mode == "associative")
+                {
+                    r.error = "missing tag in associative object";                    
+                }
+            }
+            
+
+            return rObj;
+        }        
+
+        public static ralyn.TypeOf looksLike(string s)
+        {
+            s = s.TrimStart(new char[] { ' ', ':', '\t' }).Trim().ToUpper();
+            if(s.Length == 0)
+            {
+                return TypeOf.Undetermined;
+            }
+            else if(s.Length >= 2 && 
+                s[0] == '/' && 
+                s[1] == '/')
+            {
+                return TypeOf.Comment;
+            }
+            else if (s == "NULL")
+            {
+                return TypeOf.Null;
+            }
+            else if (s == "TRUE")
+            {
+                return TypeOf.True;
+            }
+            else if (s == "FALSE")
+            {
+                return TypeOf.False;
+            }
+            else if (s.Length > 0 && (
+               s[0] == '"' ||
+               s[0] == '\'' ||               
+               s[0] == '$'))
+            {
+                return TypeOf.String;
+            }else if(s.Length > 0 && 
+                s[0] == '<')
+            {
+                return TypeOf.Tag;
+            }
+            else if (s.Length > 0 &&
+                s[0] == '{')
+            {
+                return TypeOf.rList;
+            }
+            else if (s.Length > 0 && (
+                s[0] == '1' ||
+                s[0] == '2' ||
+                s[0] == '3' ||
+                s[0] == '4' ||
+                s[0] == '5' ||
+                s[0] == '6' ||
+                s[0] == '7' ||
+                s[0] == '8' ||
+                s[0] == '9' ||
+                s[0] == '0' ||
+                s[0] == '-' ||
+                s[0] == '+' ||
+                s[0] == '.'))
+            {
+                return TypeOf.Number;
+            }
+            else if (s.Length > 0 && (
+               s[0] == ':' ||
+               s[0] == ';' ||
+               s[0] == ','))
+            {
+                return TypeOf.ControlCharacter;
+            }
+            else
+            {
+                return TypeOf.Undetermined;
+            }
+
+        }
+        #endregion Lexer
+
+        #region Ralyn output
+        public override string ToString()
+       {
+           switch(this.type)
+                {
+                    case TypeOf.Null:
+                        return "Null";// + " -> NULL";
+                    case TypeOf.True:
+                        return "true";// + " -> bool";
+                    case TypeOf.False:
+                        return "false";// + " -> bool";
+                    case TypeOf.String:
+                        return this.sValue;// + " -> String";
+                    case TypeOf.Number:
+                        return this.nValue.ToString();// + " -> Number";
+                    case TypeOf.Comment:
+                        return "//" 
+                            + this.representation;// + " -> Comment";
+                    case TypeOf.Root:    
+                        return this.ToStructure();
+                    case TypeOf.rList:
+                        var r = new ralyn();
+                        r.Children = this.Children;
+                        return r.ToStructure();
+                    default:
+                        return "";
+                }
+       }
+        private string ToStructure()
+        {
+            return this.ToStructure(0);
+        }
+        private string ToStructure(int indent)
+        {
+            try
+            {  
+                var tagname = (String.IsNullOrEmpty(this.tag.nameSpace) && String.IsNullOrEmpty(this.tag.name) ? "" : this.tag + " : ");
+
+                if(!String.IsNullOrEmpty(this.error))
+                {
+                    //return "<Exception|> : { <line> : " + this.lineNumber.ToString() + " <char> : " + this.charNumber.ToString() + " <message> : $(' " + this.error + "')}";
+                    return "//{Exception: " + this.error + "}";
+                }else
+                //single value
+                switch(this.type)
+                {
+                    case TypeOf.Null:
+                        return tagname + "Null";// + " -> NULL";
+                    case TypeOf.True:
+                        return tagname + "true";// + " -> bool";
+                    case TypeOf.False:
+                        return tagname + "false";// + " -> bool";
+                    case TypeOf.String:
+                        return tagname + this.representation;// + " -> String";
+                    case TypeOf.Number:
+                        return tagname + this.nValue.ToString();// + " -> Number";
+                    case TypeOf.Comment:
+                        return "//" 
+                            + tagname
+                            + this.representation;// + " -> Comment";
+                    case TypeOf.Root:
+                        var rootString = new System.Text.StringBuilder();
+                        foreach (ralyn r in this.children)
+                        {
+                            rootString.AppendLine(new String('\t', indent) + r.ToStructure(indent));
+                        }
+                        return rootString.ToString();
+                    case TypeOf.rList:
+                        var ret = new System.Text.StringBuilder();
+                        ret.AppendLine(tagname + "{");
+                        ++indent;
+                        foreach (ralyn r in this.children)
+                        {
+                            ret.AppendLine(new String('\t', indent) + r.ToStructure(indent));
+                        }
+                        --indent;
+                        ret.AppendLine(new String('\t', indent) + "}");
+                        return ret.ToString();
+                    default:
+                        return "";
+                }
+            }catch(Exception outputEx)
+            {                
+                //return "<Exception|> : { <line> : " + this.lineNumber.ToString() + " <char> : " + this.charNumber.ToString() + " <message> : $(' " + outputEx.Message + "')}";
+                return "//{Exception: " + outputEx.Message + "}";
+            }
+        }       
+        #endregion Ralyn output
+
+        #region String output... JSON/XML transformations
+
+        public string Transform(string transformDocument)
+        {
+            var resultDocument = new StringBuilder();
+
+            return resultDocument.ToString();
+        }
+
+        public string ToJSON(int indent = 0)
+        {
+                var tagname = "\"" + (string.IsNullOrEmpty(this.tag.nameSpace) ? "" : this.tag.nameSpace + "|") + this.tag.name + "\" : ";
+                if(tagname == "\"\" : ") tagname="";
+
+            try
+            {
+                //single value
+                switch (this.type)
+                {
+                    case TypeOf.Null:
+                        return tagname + "null,";// + " -> NULL";
+                    case TypeOf.True:
+                        return tagname + "true,";// + " -> bool";
+                    case TypeOf.False:
+                        return tagname + "false,";// + " -> bool";
+                    case TypeOf.String:
+                        return tagname + "\"" + this.sValue + "\",";// + " -> String";
+                    case TypeOf.Number:
+                        return tagname + this.nValue.ToString() + ",";// + " -> Number";
+                    case TypeOf.Comment:
+                        return "/*" + tagname + this.representation + "*/";// + " -> Comment";
+                    case TypeOf.Root:
+                        var rootString = new System.Text.StringBuilder();
+                        rootString.AppendLine("[" );
+                        ++indent;
+                        foreach (ralyn r in this.children)
+                        {
+                            rootString.AppendLine(new String('\t', indent) + r.ToJSON(indent));
+                        }
+                        --indent;
+                        rootString.AppendLine("]");
+                        return rootString.ToString();
+                    case TypeOf.rList:
+                        var ret = new System.Text.StringBuilder();
+                        ret.AppendLine("\"" + (string.IsNullOrEmpty(this.tag.nameSpace) ? "" : this.tag.nameSpace + "|") 
+                            + this.tag.name + "\" : {");
+                        ++indent;
+                        foreach (ralyn r in this.children)
+                        {
+                            ret.AppendLine(new String('\t', indent) + r.ToJSON(indent));
+                        }
+                        --indent;
+                        ret.AppendLine(new String('\t', indent) + "}");
+                        return ret.ToString();
+                    default:
+                        return "";
+                }
+            }
+            catch (Exception outputEx)
+            {
+                return "//\"Exception\" : { \"line\" : " + this.lineNumber.ToString() + ", \"char\" : " + this.charNumber.ToString() + ", \"message\" : \" " + outputEx.Message + "\",}";
+            }
+        }
+        public string ToXML(int indent = 0)
+        {
+            try
+            {
+                var tagname = (string.IsNullOrEmpty(this.tag.nameSpace) ? "" : this.tag.nameSpace + ":") 
+                    + this.tag.name.ToUpper();
+
+                if(String.IsNullOrEmpty(tagname)) tagname="VALUE";
+
+                //single value
+                switch (this.type)
+                {
+                    case TypeOf.Null:
+                        return "<" + tagname + ">" + "null" + "</" + tagname + ">";// + " -> NULL";
+                    case TypeOf.True:
+                        return "<" + tagname + ">"  + "true" + "</" + tagname + ">";// + " -> bool";
+                    case TypeOf.False:
+                        return "<" + tagname + ">"  + "false" + "</" + tagname + ">";// + " -> bool";
+                    case TypeOf.String:
+                        return "<" + tagname + ">"  + this.sValue + "</" + tagname + ">";// + "-> String";
+                    case TypeOf.Number:
+                        return "<" + tagname + ">"  + this.nValue.ToString() + "</" + tagname + ">";// + " -> Number";
+                    case TypeOf.Comment:
+                        var commentReturn = "";
+                        if(tagname == "VALUE") commentReturn =  "<!-- " + this.representation + " -->";
+                        else commentReturn =  "<!--  " + tagname + " - " + this.representation + "</" + tagname + ">  -->";// + " -> Comment";
+                        return commentReturn;
+                    case TypeOf.Root:
+                        var rootString = new System.Text.StringBuilder();
+                        rootString.AppendLine("<ROOT>");
+                        ++indent;
+                        foreach (ralyn r in this.children)
+                        {
+                            rootString.AppendLine(new String('\t', indent) + r.ToXML(indent));
+                        }
+                        --indent;
+                        rootString.AppendLine(new String('\t', indent) + "</ROOT>");
+                        return rootString.ToString();
+                    case TypeOf.rList:
+                        var ret = new System.Text.StringBuilder();
+                        ret.AppendLine("<" + tagname + ">");
+                        ++indent;
+                        foreach (ralyn r in this.children)
+                        {
+                            ret.AppendLine(new String('\t', indent) + r.ToXML(indent));
+                        }
+                        --indent;
+                        ret.AppendLine(new String('\t', indent) + "</" + tagname + ">");
+                        return ret.ToString();
+                    default:
+                        return "";
+                }
+            }
+            catch (Exception outputEx)
+            {
+                return "<!-- <Exception><line>" + this.lineNumber.ToString() + "</line><char>" + this.charNumber.ToString() + "</char><message>" + outputEx.Message + "</message></Exception> -->";
+            }
+        }
+
+        
+        
+        public static List<ralyn> JSONtoRalyn(string json)
+        {
+            throw new NotImplementedException("parsing JSON directly into ralyn is slated for future development but has not yet been implemented");
+
+            //var r = new List<ralyn>();
+            //return r;
+        }
+        #endregion String output... JSON/XML transformations
+    
+        #region ralyn path
+        public ralyn Path(string path)
+        {
+
+            //Console.WriteLine($"searching {this.Tag.name} for {path}");
+            ralyn result = this;
+            var directions = path.Split(new char[]{'>'});
+            var count = 0;
+            
+            foreach(var step in directions)
+            {
+                //Console.WriteLine($"step:{step}");
+                ++count;
+                if(step == "*")
+                {
+                    //create list of ralyn elements 
+                    var subresult = new ralyn();
+                    var subresultChildren = new List<ralyn>();
+                    foreach(var item in result.Children)
+                    {                        
+                        var newDirections = String.Join(">",directions.Skip(count).Take(directions.Length - count).ToArray());
+                        
+                        
+                        if(item.Type!=ralyn.TypeOf.Comment && String.IsNullOrEmpty(item.error))
+                        {
+                            var subPathReturns = item.Path(newDirections);
+                            
+                            if(subPathReturns != null) 
+                            {
+                                subPathReturns.Tag.name = "";
+                                subresultChildren.Add(subPathReturns);
+                            }
+                        }
+                    }
+                    subresult.Children = subresultChildren;
+                    return subresult;
+                }else{
+
+                    if(step.StartsWith("[") && step.EndsWith("]"))
+                    {
+                        int index;
+                        bool success = Int32.TryParse(step.Trim(new char[] {'[',']'}), out index);
+                        if(!success){
+                            //Console.WriteLine("INVALID PATH - index NaN");   
+                            return null;
+                        }
+
+                        foreach(var item in result.Children)
+                        {
+                            if(index<0){
+                                //Console.WriteLine("INVALID PATH - index less than Zero");   
+                                return null;
+                            }
+                            if(item.Type!=ralyn.TypeOf.Comment && String.IsNullOrEmpty(item.error))
+                            {
+                                if(index==0)
+                                {
+                                    result = item;
+                                    break;
+                                }else --index;             
+                            }
+                        }
+                        if(index>0){
+                            //Console.WriteLine("INVALID PATH - index out of range");   
+                            return null;
+                        }
+                        
+                        continue;
+                    }
+
+                    var foundPath = false;
+                    foreach(var item in result.Children)
+                    {
+                        //Console.WriteLine($"\titem:{item.Tag.name}");
+                        if(item.Type==ralyn.TypeOf.Comment || !String.IsNullOrEmpty(item.error))continue;
+                        if(item.Tag.name == step)
+                        {
+                            foundPath = true;
+                            result = item;                       
+                            break;
+                        }                    
+                    }
+                    if(!foundPath){
+                        //Console.WriteLine($"INVALID PATH - could not find {step}");
+                        return null;
                     }
                 }
             }
 
 
-
-            return rObj;
+            return result;
         }
-        #endregion Lexical Analysis
+        
+        #endregion ralyn path
+    }
 
+
+    class Program
+    {
+        //UI
+        static void Main(string[] args)
+        {
+            var exit = false;
+            var fileName = @"..\..\TestCode.ralyn";
+
+            while (!exit)
+            {
+                Console.Clear();
+                Console.WriteLine("ralyn Builder");
+                Console.WriteLine($" 1. Select File (current file->{fileName})");
+                Console.WriteLine(" 2. Format RALYN");
+                Console.WriteLine(" 3. Transpile to JSON");
+                Console.WriteLine(" 4. Transpile to XML");
+                Console.WriteLine(" 5. Path");
+                Console.WriteLine(" 0. Exit");
+                var key = Console.ReadKey();
+                string codeFromFile = System.IO.File.ReadAllText(fileName);
+                ralyn ralynDoc = new ralyn();
+
+                switch (key.KeyChar)
+                {
+                    case '1':
+                        Console.WriteLine();
+                        Console.WriteLine("Enter new file path");
+                        var tempFile = Console.ReadLine();
+                        var fi = new System.IO.FileInfo(tempFile);
+                        if (fi.Exists)
+                        {
+                            fileName = tempFile;
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Could not locate {tempFile}, reverting to {fileName}");
+                            Console.WriteLine("press any key to continue...");
+                            Console.ReadKey();
+                        }
+                        break;
+                    case '2':
+                        //Format RALYN
+                        Console.WriteLine();
+
+                        ralynDoc = new ralyn(codeFromFile);
+                        Console.WriteLine(ralynDoc);
+
+                        Console.WriteLine("press any key to continue...");
+                        Console.ReadKey();
+                        break;
+                    case '3':
+                        //Transpile to JSON
+                        Console.WriteLine();
+                                              
+                        ralynDoc = new ralyn(codeFromFile);
+                        Console.WriteLine(ralynDoc.ToJSON());
+
+                        Console.WriteLine("press any key to continue...");
+                        Console.ReadKey();
+                        break;
+                    case '4':
+                        //Transpile to XML
+                        Console.WriteLine();
+                                               
+                        ralynDoc = new ralyn(codeFromFile);
+                        Console.WriteLine(ralynDoc.ToXML());
+
+                        Console.WriteLine("press any key to continue...");
+                        Console.ReadKey();
+                        break;
+                    case '5':
+                        //Path
+                        Console.WriteLine();
+                        Console.WriteLine("Enter path... something like ralyn>record-1>a");
+                        var path = Console.ReadLine();
+
+                        ralynDoc = new ralyn(codeFromFile);
+                        Console.WriteLine(ralynDoc.Path(path));
+                        
+                        Console.WriteLine("press any key to continue...");
+                        Console.ReadKey();
+                        break;
+                    case '0':
+                        exit = true;
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
+
+
+        //Builder
         #region Parsing
         static void Parse(List<ralyn> objs)
         {
-
+            Console.WriteLine("Parsing is not yet implemented");
         }
         #endregion Parsing
+
+        #region Action Tree
+        static void ActionTree(List<ralyn> objs)
+        {
+            Console.WriteLine("Action Tree is not yet implemented");
+        }
+        #endregion Action Tree
+            
     }
 }
 

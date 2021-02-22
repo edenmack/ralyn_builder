@@ -1,31 +1,44 @@
-﻿<doc> : {
-	<type>"ralyn"
-	<namespace>{
-		<url>"variableman.com/ralyn"
-		<alias>"r"
+﻿<doc|ralyn>:{
+	//{objects}
+	<record_1>:{
+		<a>:1
+		<b>:true
+		<c>:"three"
 	}
-}
+	<record_2>:{
+		<a>:1
+		<b>:true
+		<c>:"three"
+	}
+	//{lists}
+	<list_s>:{
+		"this is a bare string"
+		"so is this,
+		but it is multi-line"
+		$("special quote string")
+	}
+	<list_n>:{
+		1.23e-2
+		1.23e-2
+	}
+	<list_b>:{
+		true
+		false
+	}
+	//{mixed data -- will cause an error}
+	<mixed>:{
+		1
+		<a>:2
+		<b>:"three"
+		4.0
+	}
 
 //<t>{comment
 with crazy stuff in it}
 
-<r|rem>	"LIST"
-<list>{
-	<string>$("list item 1")
-	<string>$("list item 2")
-	<list>{
-		<bool>true <bool>false
-	}
-}
-
-<rem>"SIMPLE VALUES"
-<string>:$("This is a string")
-<num>1.23e-2
-<num>:1.23e-2
-<bool>true
-<bool>:false
-<mult-string> $("this string is
-multiple lines")
+//{another comment}
 
 //{empty list}
 <el>:{}
+<illegal.tag>:"this is illegal"
+}
